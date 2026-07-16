@@ -1,0 +1,26 @@
+{
+  "city": {
+    "name": "Lima, Ohio",
+    "relationId": 182725,
+    "bounds": [
+      -84.1650988,
+      40.687659,
+      -84.0708798,
+      40.7956561
+    ]
+  },
+  "generatedAt": "2026-07-16T16:56:32.650Z",
+  "osmTimestamp": "2026-07-16T16:39:15Z",
+  "source": "OpenStreetMap via Overpass API and Nominatim",
+  "license": "ODbL 1.0",
+  "counts": {
+    "pedestrianWays": 778,
+    "sidewalkTaggedRoads": 0,
+    "greenAreas": 151,
+    "hedges": 0,
+    "furniture": 441,
+    "mappedTrees": 0,
+    "inferredTrees": 1394
+  },
+  "note": "Inferred trees are deterministic visual proxies inside mapped parks, gardens, and forests; they are not surveyed tree locations."
+}
