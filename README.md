@@ -6,7 +6,7 @@ A range-streamed, GPU-accelerated reconstruction of Lima, Ohio. It combines phys
 
 - Every street available in the OpenFreeMap/OpenStreetMap vector tiles
 - 24,718 Overture building footprints; 24,179 carry source-provided height attributes and 539 use conservative class-based fallbacks
-- Procedural facade materials and shallow roof caps derived at runtime without texture downloads
+- Five deterministic facade and roof material variants per building class, generated at runtime without texture downloads
 - Esri World Imagery as an optional photographic ground surface
 - 270,515 canopy objects derived from two adjacent USGS 3DEP QL1 work units, with per-object height and crown radius
 - 778 locally packaged pedestrian paths, footways, pedestrian streets, and steps
@@ -38,7 +38,9 @@ The application is deliberately static and framework-light:
 - Vite builds plain HTML, CSS, and JavaScript.
 - A pinned, integrity-checked MapLibre GL JS CDN build performs WebGL vector, raster, and 3D building rendering.
 - Overture buildings are compiled into a same-origin PMTiles archive so the browser requests only the vector-tile ranges in view. Range reads are revalidated to avoid stale or incomplete partial-cache entries after a reload.
-- LiDAR trees are partitioned into 650-meter spatial chunks. Only camera-adjacent chunks are converted to native MapLibre trunk and two-tier crown extrusions, eliminating cross-renderer WebGL state while retaining per-object height and crown radius.
+- LiDAR trees are partitioned into 650-meter spatial chunks and rendered as camera-bounded native MapLibre trunks with asymmetric three-tier crown extrusions, retaining per-object height and crown radius without a second WebGL renderer.
+- Canopy regeneration is debounced until flight settles, with zoom- and pitch-dependent 3,600/6,800/8,500-object budgets and a 6,000-object high-pitch ceiling. Crown parts also use progressive minimum zooms.
+- Day, golden-hour, and night modes now include atmospheric sky and horizon palettes. High-pitch flight automatically suppresses only distant highway shields and country/state labels to keep the horizon legible while preserving local street names.
 - USGS 3DEP point clouds are normalized and sampled offline with PDAL. Overture footprints mask likely roof returns before the browser asset is written.
 - OpenFreeMap supplies keyless, globally tiled OpenStreetMap data.
 - A build-time Node script converts a Lima Overpass extract into static GeoJSON.

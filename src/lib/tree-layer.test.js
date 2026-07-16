@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { chunkTreeInventory, localMeters, treePartFeatures } from "./tree-layer.js";
+import { chunkTreeInventory, localMeters, treePartFeatures } from "./tree-geometry.js";
 
 test("localMeters anchors Lima's center at zero", () => {
   const [x, y] = localMeters(-84.105006, 40.7399785);
@@ -32,13 +32,13 @@ test("native tree parts form closed, height-ordered extrusion polygons", () => {
   const parts = treePartFeatures([-84.105, 40.74, 18, 4.2, 2], 7);
   assert.deepEqual(
     parts.map((feature) => feature.properties.part),
-    ["trunk", "lower", "upper"],
+    ["trunk", "lower", "middle", "upper"],
   );
   assert.ok(parts.every((feature) => feature.properties.height > feature.properties.base));
   assert.ok(
     parts.every((feature) => {
       const coordinates = feature.geometry.coordinates[0];
-      return coordinates.length >= 7 && coordinates[0][0] === coordinates.at(-1)[0] && coordinates[0][1] === coordinates.at(-1)[1];
+      return coordinates.length >= 6 && coordinates[0][0] === coordinates.at(-1)[0] && coordinates[0][1] === coordinates.at(-1)[1];
     }),
   );
 });
@@ -53,7 +53,8 @@ test("LiDAR crowns use deterministic asymmetric silhouettes", () => {
   );
 
   assert.deepEqual(first, second);
-  assert.equal(lowerRing.length, 12);
-  assert.equal(first[2].geometry.coordinates[0].length, 11);
+  assert.equal(lowerRing.length, 11);
+  assert.equal(first[2].geometry.coordinates[0].length, 12);
+  assert.equal(first[3].geometry.coordinates[0].length, 9);
   assert.ok(new Set(radialSignatures).size >= 6);
 });

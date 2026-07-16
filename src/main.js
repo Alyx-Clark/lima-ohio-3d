@@ -16,6 +16,17 @@ const MAP_STYLE = "https://tiles.openfreemap.org/styles/liberty";
 const DATA_BASE = `${import.meta.env.BASE_URL}data/`;
 const BUILDINGS_PM_TILES = new URL(`${DATA_BASE}lima-buildings.pmtiles`, window.location.href).href;
 const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+const FACADE_TYPES = ["residential", "urban", "industrial"];
+const MATERIAL_VARIANTS = [0, 1, 2, 3, 4];
+const HIGH_PITCH_CULLED_LABELS = new Set([
+  "highway-shield-non-us",
+  "highway-shield-us-interstate",
+  "road_shield_us",
+  "label_state",
+  "label_country_1",
+  "label_country_2",
+  "label_country_3",
+]);
 
 const PRESETS = {
   overview: {
@@ -68,6 +79,7 @@ const LIGHT_MODES = {
     buildingLow: "#d6d1c7",
     buildingHigh: "#b9b3aa",
     water: "#8fb8c2",
+    sky: { sky: "#78b3df", horizon: "#eef2f2", fog: "#d9e0e2" },
     light: { anchor: "map", color: "#fff0da", intensity: 0.5, position: [1.15, 205, 38] },
   },
   golden: {
@@ -75,13 +87,15 @@ const LIGHT_MODES = {
     buildingLow: "#d6b38f",
     buildingHigh: "#a66f53",
     water: "#6f9da7",
-    light: { anchor: "map", color: "#ffc278", intensity: 0.72, position: [1.35, 245, 22] },
+    sky: { sky: "#83aecd", horizon: "#f3c795", fog: "#d9baa0" },
+    light: { anchor: "map", color: "#ffe0b0", intensity: 0.58, position: [1.3, 245, 34] },
   },
   night: {
     background: "#16211f",
     buildingLow: "#3b4b4e",
     buildingHigh: "#63747a",
     water: "#1f4b57",
+    sky: { sky: "#07111e", horizon: "#28383f", fog: "#18282d" },
     light: { anchor: "map", color: "#b8d4df", intensity: 0.27, position: [1.4, 210, 55] },
   },
 };
@@ -121,6 +135,8 @@ let toastTimer;
 let inferredTreesAutoHidden = false;
 let lidarTreeLayer;
 let activeLightMode = "day";
+let labelsVisible = true;
+let highPitchLabelsCulled = false;
 
 const pmtilesProtocol = maplibregl ? new Protocol() : null;
 if (pmtilesProtocol) maplibregl.addProtocol("pmtiles", pmtilesProtocol.tile);
@@ -156,7 +172,6 @@ async function loadCompressedJson(name) {
 
 const loadDetailData = () => loadCompressedJson("lima-detail");
 const loadTreeData = () => loadCompressedJson("lima-trees");
-
 function safePaint(map, layerId, property, value) {
   if (!map.getLayer(layerId)) return;
   try {
@@ -180,7 +195,7 @@ function layerAnchor(map, preferredId) {
   return map.getStyle().layers.find((layer) => layer.type === "symbol")?.id;
 }
 
-function createFacadePattern(facadeType, mode) {
+function createFacadePattern(facadeType, mode, variant) {
   const canvas = document.createElement("canvas");
   canvas.width = 96;
   canvas.height = 96;
@@ -206,15 +221,33 @@ function createFacadePattern(facadeType, mode) {
   context.fillStyle = palette[0];
   context.fillRect(0, 0, 96, 96);
 
+  const materialTints = {
+    day: ["rgba(255,255,255,0)", "rgba(116,70,45,0.13)", "rgba(247,231,198,0.17)", "rgba(76,101,104,0.13)", "rgba(96,70,57,0.1)"],
+    golden: ["rgba(255,255,255,0)", "rgba(130,67,38,0.16)", "rgba(246,215,167,0.15)", "rgba(77,91,94,0.12)", "rgba(112,67,45,0.12)"],
+    night: ["rgba(255,255,255,0)", "rgba(31,20,18,0.22)", "rgba(90,86,70,0.14)", "rgba(27,49,53,0.2)", "rgba(53,34,29,0.16)"],
+  };
+  context.fillStyle = materialTints[mode][variant];
+  context.fillRect(0, 0, 96, 96);
+
   if (facadeType === "residential") {
     context.strokeStyle = palette[1];
     context.globalAlpha = 0.34;
     context.lineWidth = 2;
-    for (let y = 8; y < 96; y += 12) {
+    const sidingSpacing = [12, 10, 14, 8, 12][variant];
+    for (let y = 8; y < 96; y += sidingSpacing) {
       context.beginPath();
       context.moveTo(0, y);
       context.lineTo(96, y);
       context.stroke();
+    }
+    if (variant === 3) {
+      context.globalAlpha = 0.2;
+      for (let x = 0; x < 96; x += 12) {
+        context.beginPath();
+        context.moveTo(x, 0);
+        context.lineTo(x, 96);
+        context.stroke();
+      }
     }
     context.globalAlpha = 1;
   } else if (facadeType === "urban") {
@@ -227,7 +260,7 @@ function createFacadePattern(facadeType, mode) {
       context.lineTo(96, y);
       context.stroke();
     }
-    for (let x = 0; x <= 96; x += 24) {
+    for (let x = variant % 2 ? 12 : 0; x <= 96; x += 24) {
       context.beginPath();
       context.moveTo(x, 0);
       context.lineTo(x, 96);
@@ -238,7 +271,8 @@ function createFacadePattern(facadeType, mode) {
     context.strokeStyle = palette[1];
     context.globalAlpha = 0.4;
     context.lineWidth = 2;
-    for (let x = 0; x <= 96; x += 16) {
+    const panelSpacing = [16, 12, 20, 24, 14][variant];
+    for (let x = 0; x <= 96; x += panelSpacing) {
       context.beginPath();
       context.moveTo(x, 0);
       context.lineTo(x, 96);
@@ -269,6 +303,81 @@ function createFacadePattern(facadeType, mode) {
   return context.getImageData(0, 0, 96, 96);
 }
 
+function createRoofPattern(mode, variant) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 64;
+  canvas.height = 64;
+  const context = canvas.getContext("2d", { alpha: false });
+  const bases = {
+    day: ["#999083", "#756b62", "#a8aaa5", "#79685b", "#8e8170"],
+    golden: ["#9b8068", "#77594b", "#a59c89", "#805e49", "#927158"],
+    night: ["#414746", "#343838", "#4b5351", "#3c3938", "#45413e"],
+  };
+  const seams = {
+    day: "rgba(52,48,43,0.24)",
+    golden: "rgba(62,43,32,0.25)",
+    night: "rgba(12,18,18,0.34)",
+  };
+  context.fillStyle = bases[mode][variant];
+  context.fillRect(0, 0, 64, 64);
+  context.strokeStyle = seams[mode];
+  context.lineWidth = 1;
+
+  if (variant === 2) {
+    for (let x = 0; x <= 64; x += 8) {
+      context.beginPath();
+      context.moveTo(x, 0);
+      context.lineTo(x, 64);
+      context.stroke();
+    }
+  } else {
+    for (let y = 0; y <= 64; y += variant === 1 ? 8 : 12) {
+      context.beginPath();
+      context.moveTo(0, y);
+      context.lineTo(64, y);
+      context.stroke();
+    }
+    if (variant === 0 || variant === 4) {
+      for (let y = 0; y < 64; y += 12) {
+        for (let x = (y / 12) % 2 ? -8 : 0; x < 64; x += 16) {
+          context.beginPath();
+          context.moveTo(x, y);
+          context.lineTo(x, Math.min(64, y + 12));
+          context.stroke();
+        }
+      }
+    }
+  }
+
+  if (variant === 3) {
+    context.fillStyle = mode === "night" ? "#1d292b" : "#51636a";
+    context.fillRect(10, 12, 15, 10);
+    context.fillRect(39, 36, 11, 9);
+    context.strokeStyle = mode === "night" ? "#718183" : "#d3d9d6";
+    context.strokeRect(10.5, 12.5, 14, 9);
+    context.strokeRect(39.5, 36.5, 10, 8);
+  }
+  return context.getImageData(0, 0, 64, 64);
+}
+
+function facadePatternExpression(mode, facadeType) {
+  return [
+    "match",
+    ["get", "material_variant"],
+    ...MATERIAL_VARIANTS.flatMap((variant) => [variant, `facade-${mode}-${facadeType}-${variant}`]),
+    `facade-${mode}-${facadeType}-0`,
+  ];
+}
+
+function roofPatternExpression(mode) {
+  return [
+    "match",
+    ["get", "material_variant"],
+    ...MATERIAL_VARIANTS.flatMap((variant) => [variant, `roof-${mode}-${variant}`]),
+    `roof-${mode}-0`,
+  ];
+}
+
 function createFallbackMapIcon() {
   const canvas = document.createElement("canvas");
   canvas.width = 24;
@@ -286,9 +395,15 @@ function createFallbackMapIcon() {
 
 function addFacadePatterns(map) {
   for (const mode of Object.keys(LIGHT_MODES)) {
-    for (const facadeType of ["residential", "urban", "industrial"]) {
-      const name = `facade-${mode}-${facadeType}`;
-      if (!map.hasImage(name)) map.addImage(name, createFacadePattern(facadeType, mode), { pixelRatio: 2 });
+    for (const facadeType of FACADE_TYPES) {
+      for (const variant of MATERIAL_VARIANTS) {
+        const name = `facade-${mode}-${facadeType}-${variant}`;
+        if (!map.hasImage(name)) map.addImage(name, createFacadePattern(facadeType, mode, variant), { pixelRatio: 2 });
+      }
+    }
+    for (const variant of MATERIAL_VARIANTS) {
+      const name = `roof-${mode}-${variant}`;
+      if (!map.hasImage(name)) map.addImage(name, createRoofPattern(mode, variant), { pixelRatio: 2 });
     }
   }
 }
@@ -333,7 +448,7 @@ function addMeasuredBuildings(map, beforeLabels) {
   addFacadePatterns(map);
 
   const wallHeight = ["max", ["get", "min_height"], ["-", ["get", "height"], 0.34]];
-  for (const facadeType of ["residential", "urban", "industrial"]) {
+  for (const facadeType of FACADE_TYPES) {
     map.addLayer(
       {
         id: `lima-buildings-${facadeType}`,
@@ -343,7 +458,7 @@ function addMeasuredBuildings(map, beforeLabels) {
         minzoom: 13.2,
         filter: ["==", ["get", "facade_type"], facadeType],
         paint: {
-          "fill-extrusion-pattern": `facade-day-${facadeType}`,
+          "fill-extrusion-pattern": facadePatternExpression("day", facadeType),
           "fill-extrusion-height": wallHeight,
           "fill-extrusion-base": ["get", "min_height"],
           "fill-extrusion-opacity": 0.98,
@@ -362,15 +477,7 @@ function addMeasuredBuildings(map, beforeLabels) {
       "source-layer": "buildings",
       minzoom: 13.2,
       paint: {
-        "fill-extrusion-color": [
-          "match",
-          ["get", "facade_type"],
-          "industrial",
-          "#b8b9b2",
-          "urban",
-          "#89766b",
-          "#9a8976",
-        ],
+        "fill-extrusion-pattern": roofPatternExpression("day"),
         "fill-extrusion-height": ["get", "height"],
         "fill-extrusion-base": wallHeight,
         "fill-extrusion-opacity": 1,
@@ -385,23 +492,10 @@ function addMeasuredBuildings(map, beforeLabels) {
 }
 
 function styleMeasuredBuildings(map, mode) {
-  for (const facadeType of ["residential", "urban", "industrial"]) {
-    safePaint(map, `lima-buildings-${facadeType}`, "fill-extrusion-pattern", `facade-${mode}-${facadeType}`);
+  for (const facadeType of FACADE_TYPES) {
+    safePaint(map, `lima-buildings-${facadeType}`, "fill-extrusion-pattern", facadePatternExpression(mode, facadeType));
   }
-  const roofColors = {
-    day: ["#b8b9b2", "#89766b", "#9a8976"],
-    golden: ["#b4a78f", "#8f6652", "#9c7b61"],
-    night: ["#485150", "#454443", "#4c4b46"],
-  }[mode];
-  safePaint(map, "lima-building-roofs", "fill-extrusion-color", [
-    "match",
-    ["get", "facade_type"],
-    "industrial",
-    roofColors[0],
-    "urban",
-    roofColors[1],
-    roofColors[2],
-  ]);
+  safePaint(map, "lima-building-roofs", "fill-extrusion-pattern", roofPatternExpression(mode));
 }
 
 function addLimaLayers(map, detailData) {
@@ -790,7 +884,7 @@ function styleBaseMap(map, mode = "day") {
 
   const aerialLight = {
     day: { min: 0.08, max: 0.94, saturation: -0.08, contrast: 0.08 },
-    golden: { min: 0.08, max: 0.82, saturation: -0.02, contrast: 0.12 },
+    golden: { min: 0.07, max: 0.88, saturation: -0.01, contrast: 0.09 },
     night: { min: 0.015, max: 0.34, saturation: -0.42, contrast: 0.18 },
   }[mode];
   safePaint(map, "lima-aerial", "raster-brightness-min", aerialLight.min);
@@ -808,6 +902,19 @@ function styleBaseMap(map, mode = "day") {
     map.setLight(palette.light);
   } catch (error) {
     console.debug("This renderer does not expose map light controls", error);
+  }
+  try {
+    map.setSky({
+      "sky-color": palette.sky.sky,
+      "sky-horizon-blend": mode === "night" ? 0.36 : 0.55,
+      "horizon-color": palette.sky.horizon,
+      "horizon-fog-blend": mode === "night" ? 0.32 : 0.5,
+      "fog-color": palette.sky.fog,
+      "fog-ground-blend": 0.12,
+      "atmosphere-blend": 0,
+    });
+  } catch (error) {
+    console.debug("This renderer does not expose sky controls", error);
   }
 }
 
@@ -843,11 +950,27 @@ function setLayerGroup(map, group, visible) {
 
   if (group === "trees") lidarTreeLayer?.setVisible(visible);
 
-  const ids = group === "labels" ? labelLayerIds : group === "trees" && lidarTreeLayer ? [] : GROUP_LAYERS[group] || [];
+  if (group === "labels") {
+    labelsVisible = visible;
+    syncLabelVisibility(map, true);
+    return;
+  }
+
+  const ids = group === "trees" && lidarTreeLayer ? [] : GROUP_LAYERS[group] || [];
   ids.forEach((id) => safeLayout(map, id, "visibility", visible ? "visible" : "none"));
 
   if (group === "trees" && visible && inferredTreesAutoHidden) {
     safeLayout(map, "lima-tree-crowns-inferred", "visibility", "none");
+  }
+}
+
+function syncLabelVisibility(map, force = false) {
+  const cullForPitch = map.getPitch() >= 76;
+  if (!force && cullForPitch === highPitchLabelsCulled) return;
+  highPitchLabelsCulled = cullForPitch;
+  for (const id of labelLayerIds) {
+    const pitchCulled = cullForPitch && HIGH_PITCH_CULLED_LABELS.has(id);
+    safeLayout(map, id, "visibility", labelsVisible && !pitchCulled ? "visible" : "none");
   }
 }
 
@@ -1144,7 +1267,10 @@ function initializeMap() {
   map.on("movestart", () => {
     if (loaded) elements.renderStatus.textContent = inferredTreesAutoHidden ? "ADAPTIVE" : "FLYING";
   });
-  map.on("move", () => updateCameraReadout(map));
+  map.on("move", () => {
+    updateCameraReadout(map);
+    syncLabelVisibility(map);
+  });
   map.on("moveend", () => {
     if (loaded) elements.renderStatus.textContent = inferredTreesAutoHidden ? "ADAPTIVE" : "READY";
   });

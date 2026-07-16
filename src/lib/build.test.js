@@ -24,5 +24,15 @@ test("PMTiles ranges bypass partial browser cache entries", () => {
 test("LiDAR canopy uses native bounded extrusions without a second WebGL renderer", () => {
   assert.match(treeRenderer, /type:\s*["']fill-extrusion["']/);
   assert.match(treeRenderer, /cameraBatchLimit/);
+  assert.match(treeRenderer, /scheduleUpdate/);
   assert.doesNotMatch(packageManifest, /["']three["']/);
+});
+
+test("close-range realism stays native and data-driven", () => {
+  assert.match(application, /facadePatternExpression/);
+  assert.match(application, /roofPatternExpression/);
+  assert.match(application, /map\.setSky/);
+  assert.match(application, /HIGH_PITCH_CULLED_LABELS/);
+  assert.match(treeRenderer, /"middle"/);
+  assert.match(treeRenderer, /setReduced/);
 });
