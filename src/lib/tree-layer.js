@@ -68,29 +68,39 @@ function paddedViewBounds(map) {
   return [west - longitudePadding, south - latitudePadding, east + longitudePadding, north + latitudePadding];
 }
 
-function ring(longitude, latitude, radius, sides, angleOffset) {
+function deterministicNoise(seed) {
+  const value = Math.sin(seed * 12.9898 + 78.233) * 43_758.5453;
+  return value - Math.floor(value);
+}
+
+function ring(longitude, latitude, radius, sides, angleOffset, shape = {}) {
   const longitudeScale = 1 / (EARTH_METERS_PER_DEGREE * Math.cos((latitude * Math.PI) / 180));
   const latitudeScale = 1 / EARTH_METERS_PER_DEGREE;
+  const roughness = shape.roughness || 0;
+  const aspect = shape.aspect || 1;
+  const seed = shape.seed || 0;
   const coordinates = [];
   for (let side = 0; side < sides; side += 1) {
     const angle = angleOffset + (side / sides) * Math.PI * 2;
+    const radialVariation = 1 + (deterministicNoise(seed + side * 17.17) - 0.5) * roughness;
+    const shapedRadius = radius * radialVariation;
     coordinates.push([
-      longitude + Math.cos(angle) * radius * longitudeScale,
-      latitude + Math.sin(angle) * radius * latitudeScale,
+      longitude + Math.cos(angle) * shapedRadius * aspect * longitudeScale,
+      latitude + Math.sin(angle) * shapedRadius * (2 - aspect) * latitudeScale,
     ]);
   }
   coordinates.push(coordinates[0]);
   return coordinates;
 }
 
-function partFeature(tree, part, radius, base, height, sides, angleOffset) {
+function partFeature(tree, part, radius, base, height, sides, angleOffset, shape) {
   const [longitude, latitude, , , variant] = tree;
   return {
     type: "Feature",
     properties: { part, variant, base: Number(base.toFixed(2)), height: Number(height.toFixed(2)) },
     geometry: {
       type: "Polygon",
-      coordinates: [ring(longitude, latitude, radius, sides, angleOffset)],
+      coordinates: [ring(longitude, latitude, radius, sides, angleOffset, shape)],
     },
   };
 }
@@ -100,10 +110,20 @@ export function treePartFeatures(tree, index = 0) {
   const trunkHeight = Math.max(1.8, height * 0.44);
   const trunkRadius = Math.max(0.16, Math.min(0.48, height * 0.026));
   const angle = ((variant * 71 + index * 29) % 360) * (Math.PI / 180);
+  const aspect = 0.86 + deterministicNoise(variant * 101 + index * 7.3) * 0.28;
+  const crownSeed = variant * 1_009 + index * 31;
   return [
-    partFeature(tree, "trunk", trunkRadius, 0, trunkHeight, 6, angle),
-    partFeature(tree, "lower", crownRadius, trunkHeight * 0.62, height * 0.81, 8, angle),
-    partFeature(tree, "upper", crownRadius * 0.73, height * 0.54, height, 7, angle + 0.19),
+    partFeature(tree, "trunk", trunkRadius, 0, trunkHeight, 7, angle),
+    partFeature(tree, "lower", crownRadius, trunkHeight * 0.62, height * 0.81, 11, angle, {
+      aspect,
+      roughness: 0.22,
+      seed: crownSeed,
+    }),
+    partFeature(tree, "upper", crownRadius * 0.7, height * 0.54, height, 10, angle + 0.19, {
+      aspect: 2 - aspect,
+      roughness: 0.28,
+      seed: crownSeed + 503,
+    }),
   ];
 }
 

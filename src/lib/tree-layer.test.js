@@ -42,3 +42,18 @@ test("native tree parts form closed, height-ordered extrusion polygons", () => {
     }),
   );
 });
+
+test("LiDAR crowns use deterministic asymmetric silhouettes", () => {
+  const first = treePartFeatures([-84.105, 40.74, 18, 4.2, 2], 7);
+  const second = treePartFeatures([-84.105, 40.74, 18, 4.2, 2], 7);
+  const lowerRing = first[1].geometry.coordinates[0];
+  const center = [-84.105, 40.74];
+  const radialSignatures = lowerRing.slice(0, -1).map(([longitude, latitude]) =>
+    Math.round(Math.hypot(longitude - center[0], latitude - center[1]) * 1e9),
+  );
+
+  assert.deepEqual(first, second);
+  assert.equal(lowerRing.length, 12);
+  assert.equal(first[2].geometry.coordinates[0].length, 11);
+  assert.ok(new Set(radialSignatures).size >= 6);
+});
