@@ -82,11 +82,11 @@ npm ci
 npm run check
 ```
 
-Publish the contents of `dist/` to any static web root. Assets use relative URLs, so the build works at a root domain or a subpath such as `/lima-3d/` without rebuilding.
+Publish the contents of `dist/` at `/lima-3d`. The production build intentionally emits absolute `/lima-3d/` asset and data URLs because the documented Nginx configuration canonicalizes `/lima-3d/` to `/lima-3d`.
 
-Pushes to `main` also run the checked-in GitHub Pages workflow, providing a public deployment without changing the production server.
+The public release target is [https://owlex.dev/lima-3d](https://owlex.dev/lima-3d); GitHub remains the canonical source repository.
 
-For the documented Nginx server, deployment requires only a versioned copy of `dist/` into the selected web-root directory, followed by route verification. It does not require a new port, daemon, database, DNS record, TLS certificate, or Nginx behavior change. Keep the previous directory as the rollback target until the new route is verified.
+For the documented Nginx server, deployment requires only a versioned copy of `dist/` into `/var/www/html/lima-3d`, followed by route verification. It does not require a new port, daemon, database, DNS record, TLS certificate, or Nginx behavior change. Keep the previous directory as the rollback target until the new route is verified.
 
 ## Data and licenses
 
