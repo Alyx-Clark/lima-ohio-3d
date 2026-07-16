@@ -1,6 +1,6 @@
 import "./style.css";
 
-import { PMTiles, Protocol } from "pmtiles";
+import { FetchSource, PMTiles, Protocol } from "pmtiles";
 
 import {
   flightSpeedForZoom,
@@ -321,7 +321,9 @@ function addAerialLayer(map) {
 }
 
 function addMeasuredBuildings(map, beforeLabels) {
-  const archive = new PMTiles(BUILDINGS_PM_TILES);
+  const archiveSource = new FetchSource(BUILDINGS_PM_TILES);
+  archiveSource.mustReload = true;
+  const archive = new PMTiles(archiveSource);
   pmtilesProtocol.add(archive);
   map.addSource("lima-buildings", {
     type: "vector",

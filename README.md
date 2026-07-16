@@ -37,7 +37,7 @@ The application is deliberately static and framework-light:
 
 - Vite builds plain HTML, CSS, and JavaScript.
 - A pinned, integrity-checked MapLibre GL JS CDN build performs WebGL vector, raster, and 3D building rendering.
-- Overture buildings are compiled into a same-origin PMTiles archive so the browser requests only the vector-tile ranges in view.
+- Overture buildings are compiled into a same-origin PMTiles archive so the browser requests only the vector-tile ranges in view. Range reads are revalidated to avoid stale or incomplete partial-cache entries after a reload.
 - Three.js renders LiDAR canopy through GPU instancing. Trees are partitioned into 650-meter chunks, culled against the camera bounds, and switch between low/high polygon crowns by zoom.
 - USGS 3DEP point clouds are normalized and sampled offline with PDAL. Overture footprints mask likely roof returns before the browser asset is written.
 - OpenFreeMap supplies keyless, globally tiled OpenStreetMap data.
