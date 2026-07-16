@@ -1,0 +1,30 @@
+{
+  "name": "lima-ohio-3d",
+  "version": "1.0.0",
+  "description": "A fast, detailed 3D city explorer for Lima, Ohio.",
+  "type": "module",
+  "private": false,
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "lint": "eslint . && html-validate index.html",
+    "test": "node --test",
+    "check": "npm run lint && npm run test && npm run build",
+    "data:fetch": "node scripts/fetch-osm.mjs data/source/lima-overpass.json",
+    "data:build": "node scripts/build-osm-data.mjs data/source/lima-overpass.json public/data",
+    "data:refresh": "npm run data:fetch && npm run data:build"
+  },
+  "dependencies": {
+    "maplibre-gl": "^5.24.0"
+  },
+  "devDependencies": {
+    "eslint": "^10.7.0",
+    "globals": "^17.7.0",
+    "html-validate": "^11.5.6",
+    "vite": "^8.1.5"
+  },
+  "engines": {
+    "node": ">=22.12"
+  }
+}

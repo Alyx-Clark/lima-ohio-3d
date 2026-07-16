@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="day">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#111c19">
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <meta
+      name="description"
+      content="Fly through a detailed, interactive 3D rendering of Lima, Ohio."
+    >
+    <link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin>
+    <link rel="preconnect" href="https://fonts.openfreemap.org" crossorigin>
+    <link rel="preconnect" href="https://s3.amazonaws.com" crossorigin>
+    <title>Lima 3D — City Explorer</title>
+  </head>
+  <body>
+    <a class="skip-link" href="#explorer-controls">Skip to explorer controls</a>
+    <main id="app">
+      <div
+        id="map"
+        role="application"
+        aria-label="Interactive three-dimensional map of Lima, Ohio"
+      ></div>
+
+      <div class="atmosphere" aria-hidden="true"></div>
+
+      <div id="loading" class="loading" role="status" aria-live="polite">
+        <div class="loading__mark" aria-hidden="true">
+          <span></span><span></span><span></span>
+        </div>
+        <p>Building Lima</p>
+        <small>streets · structures · landscape</small>
+      </div>
+
+      <header class="masthead">
+        <div class="wordmark">
+          <span class="wordmark__eyebrow">Ohio · 40.74° N</span>
+          <span class="wordmark__title">LIMA<span>3D</span></span>
+        </div>
+        <div class="telemetry">
+          <span class="telemetry__light" aria-hidden="true"></span>
+          <span id="render-status">STREAMING</span>
+          <span class="telemetry__rule" aria-hidden="true"></span>
+          <span id="fps-readout">GPU</span>
+        </div>
+      </header>
+
+      <button
+        id="panel-toggle"
+        class="icon-button panel-toggle"
+        type="button"
+        aria-controls="explorer-controls"
+        aria-expanded="true"
+        aria-label="Toggle explorer controls"
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M4 7h16M4 12h16M4 17h16" />
+        </svg>
+      </button>
+
+      <aside id="explorer-controls" class="control-panel" aria-label="Explorer controls">
+        <div class="control-panel__head">
+          <div>
+            <p class="section-label">FLIGHT DECK</p>
+            <h1>Explore Lima</h1>
+          </div>
+          <button id="close-panel" class="icon-button close-panel" type="button" aria-label="Close controls">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m6 6 12 12M18 6 6 18" />
+            </svg>
+          </button>
+        </div>
+
+        <section class="control-section" aria-labelledby="places-heading">
+          <div class="section-heading">
+            <h2 id="places-heading">Camera presets</h2>
+            <span id="preset-index">01 / 06</span>
+          </div>
+          <div id="preset-list" class="preset-list">
+            <button class="preset is-active" type="button" data-preset="overview">
+              <span class="preset__number">01</span>
+              <span><strong>City overview</strong><small>Entire municipal shape</small></span>
+              <span class="preset__arrow" aria-hidden="true">↗</span>
+            </button>
+            <button class="preset" type="button" data-preset="downtown">
+              <span class="preset__number">02</span>
+              <span><strong>Downtown</strong><small>Market &amp; Main</small></span>
+              <span class="preset__arrow" aria-hidden="true">↗</span>
+            </button>
+            <button class="preset" type="button" data-preset="museum">
+              <span class="preset__number">03</span>
+              <span><strong>Allen County Museum</strong><small>West Market Street</small></span>
+              <span class="preset__arrow" aria-hidden="true">↗</span>
+            </button>
+            <button class="preset" type="button" data-preset="schoonover">
+              <span class="preset__number">04</span>
+              <span><strong>Schoonover Park</strong><small>Lake &amp; greenway</small></span>
+              <span class="preset__arrow" aria-hidden="true">↗</span>
+            </button>
+            <button class="preset" type="button" data-preset="unoh">
+              <span class="preset__number">05</span>
+              <span><strong>UNOH</strong><small>North Cable Road</small></span>
+              <span class="preset__arrow" aria-hidden="true">↗</span>
+            </button>
+            <button class="preset" type="button" data-preset="street">
+              <span class="preset__number">06</span>
+              <span><strong>Street level</strong><small>Low downtown approach</small></span>
+              <span class="preset__arrow" aria-hidden="true">↗</span>
+            </button>
+          </div>
+        </section>
+
+        <section class="control-section" aria-labelledby="layers-heading">
+          <div class="section-heading">
+            <h2 id="layers-heading">Scene detail</h2>
+            <button id="reset-scene" class="text-button" type="button">RESET</button>
+          </div>
+          <div class="toggle-grid">
+            <label class="switch-row">
+              <span><i class="legend-swatch legend-swatch--building"></i>Buildings</span>
+              <input type="checkbox" data-layer-toggle="buildings" checked>
+              <i class="switch" aria-hidden="true"></i>
+            </label>
+            <label class="switch-row">
+              <span><i class="legend-swatch legend-swatch--tree"></i>Tree canopy</span>
+              <input type="checkbox" data-layer-toggle="trees" checked>
+              <i class="switch" aria-hidden="true"></i>
+            </label>
+            <label class="switch-row">
+              <span><i class="legend-swatch legend-swatch--path"></i>Pedestrian detail</span>
+              <input type="checkbox" data-layer-toggle="pedestrian" checked>
+              <i class="switch" aria-hidden="true"></i>
+            </label>
+            <label class="switch-row">
+              <span><i class="legend-swatch legend-swatch--label"></i>Map labels</span>
+              <input type="checkbox" data-layer-toggle="labels" checked>
+              <i class="switch" aria-hidden="true"></i>
+            </label>
+            <label class="switch-row">
+              <span><i class="legend-swatch legend-swatch--terrain"></i>Terrain</span>
+              <input type="checkbox" data-layer-toggle="terrain">
+              <i class="switch" aria-hidden="true"></i>
+            </label>
+            <label class="switch-row">
+              <span><i class="legend-swatch legend-swatch--furniture"></i>Street furniture</span>
+              <input type="checkbox" data-layer-toggle="furniture" checked>
+              <i class="switch" aria-hidden="true"></i>
+            </label>
+          </div>
+        </section>
+
+        <section class="control-section visual-section" aria-labelledby="light-heading">
+          <div class="section-heading">
+            <h2 id="light-heading">Light</h2>
+          </div>
+          <div class="segmented" role="group" aria-label="Lighting mode">
+            <button type="button" data-light="day" class="is-active">Day</button>
+            <button type="button" data-light="golden">Golden</button>
+            <button type="button" data-light="night">Night</button>
+          </div>
+        </section>
+
+        <div class="camera-readout">
+          <span id="camera-coordinates">40.7400° N · 84.1050° W</span>
+          <span id="camera-attitude">Z 12.8 · P 50° · B 340°</span>
+        </div>
+      </aside>
+
+      <div class="flight-help">
+        <div class="flight-help__keys" aria-hidden="true">
+          <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>
+        </div>
+        <div>
+          <strong>FLY</strong>
+          <span>Q/E turn · R/F climb · Shift boost</span>
+        </div>
+      </div>
+
+      <div class="map-hint" aria-hidden="true">
+        <span></span>
+        DRAG TO PAN · RIGHT-DRAG TO ORBIT · SCROLL TO CLIMB
+      </div>
+
+      <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+      <footer class="attribution">
+        Visualization data ©
+        <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a>
+        contributors · tiles by
+        <a href="https://openfreemap.org" target="_blank" rel="noreferrer">OpenFreeMap</a>
+      </footer>
+    </main>
+    <noscript>This explorer requires JavaScript and WebGL.</noscript>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
