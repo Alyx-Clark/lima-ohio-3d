@@ -148,9 +148,8 @@ html[data-theme="night"] .atmosphere {
   padding: 9px 12px;
   border: 1px solid rgba(255, 255, 255, 0.13);
   border-radius: 999px;
-  background: rgba(12, 24, 21, 0.72);
+  background: rgba(12, 24, 21, 0.9);
   box-shadow: 0 8px 30px rgba(4, 13, 11, 0.13);
-  backdrop-filter: blur(16px);
   color: #d8e0dc;
   font-size: 9px;
   font-weight: 700;
@@ -186,7 +185,6 @@ html[data-theme="night"] .atmosphere {
     linear-gradient(150deg, rgba(42, 60, 53, 0.22), transparent 34%),
     var(--panel);
   box-shadow: var(--shadow);
-  backdrop-filter: blur(22px) saturate(125%);
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
   transform: translateX(0);
@@ -205,8 +203,7 @@ html[data-theme="night"] .atmosphere {
   justify-content: space-between;
   padding: 20px 21px 17px;
   border-bottom: 1px solid var(--line);
-  background: rgba(14, 26, 23, 0.92);
-  backdrop-filter: blur(18px);
+  background: rgba(14, 26, 23, 0.97);
 }
 
 .control-panel h1 {
@@ -530,9 +527,8 @@ input:checked + .switch::after {
   padding: 8px 11px 8px 8px;
   border: 1px solid rgba(255, 255, 255, 0.13);
   border-radius: 5px;
-  background: rgba(13, 25, 22, 0.8);
+  background: rgba(13, 25, 22, 0.93);
   box-shadow: 0 12px 32px rgba(5, 14, 12, 0.18);
-  backdrop-filter: blur(16px);
 }
 
 .flight-help__keys {
@@ -732,9 +728,8 @@ input:checked + .switch::after {
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.13);
   border-radius: 4px;
-  background: rgba(13, 25, 22, 0.82);
+  background: rgba(13, 25, 22, 0.94);
   box-shadow: 0 9px 28px rgba(5, 14, 12, 0.16);
-  backdrop-filter: blur(14px);
 }
 
 .maplibregl-ctrl-group button {
@@ -758,10 +753,9 @@ input:checked + .switch::after {
   padding: 12px 14px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 5px;
-  background: rgba(13, 25, 22, 0.94);
+  background: rgba(13, 25, 22, 0.98);
   box-shadow: 0 16px 40px rgba(4, 12, 10, 0.25);
   color: #edf2ef;
-  backdrop-filter: blur(16px);
 }
 
 .maplibregl-popup-anchor-bottom .maplibregl-popup-tip {

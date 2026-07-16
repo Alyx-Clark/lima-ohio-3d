@@ -200,6 +200,7 @@ export function createTreeLayer(maplibregl, trees, options = {}) {
       this.camera.projectionMatrix = projection.multiply(model);
       this.renderer.resetState();
       this.renderer.render(this.scene, this.camera);
+      this.renderer.resetState();
     },
 
     setTheme(nextTheme) {
