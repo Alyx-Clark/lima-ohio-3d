@@ -5,6 +5,7 @@ import { readFile, stat } from "node:fs/promises";
 const DATA_PATH = new URL("../../public/data/lima-detail.json", import.meta.url);
 const BOUNDARY_PATH = new URL("../../public/data/lima-boundary.json", import.meta.url);
 const METADATA_PATH = new URL("../../public/data/lima-metadata.json", import.meta.url);
+const COMPRESSED_PATH = new URL("../../public/data/lima-detail.json.gz", import.meta.url);
 
 const [detail, boundary, metadata] = await Promise.all(
   [DATA_PATH, BOUNDARY_PATH, METADATA_PATH].map(async (url) => JSON.parse(await readFile(url, "utf8"))),
@@ -48,4 +49,9 @@ test("the boundary identifies the canonical Lima relation", () => {
 test("local detail stays within the startup size budget", async () => {
   const file = await stat(DATA_PATH);
   assert.ok(file.size < 2_500_000, `detail payload is ${file.size.toLocaleString()} bytes`);
+});
+
+test("the compressed startup payload stays below 400 KB", async () => {
+  const file = await stat(COMPRESSED_PATH);
+  assert.ok(file.size < 400_000, `compressed detail is ${file.size.toLocaleString()} bytes`);
 });

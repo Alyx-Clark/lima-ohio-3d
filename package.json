@@ -15,9 +15,6 @@
     "data:build": "node scripts/build-osm-data.mjs data/source/lima-overpass.json public/data",
     "data:refresh": "npm run data:fetch && npm run data:build"
   },
-  "dependencies": {
-    "maplibre-gl": "^5.24.0"
-  },
   "devDependencies": {
     "eslint": "^10.7.0",
     "globals": "^17.7.0",

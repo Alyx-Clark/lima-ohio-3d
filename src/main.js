@@ -1,5 +1,3 @@
-import maplibregl from "maplibre-gl";
-import "maplibre-gl/dist/maplibre-gl.css";
 import "./style.css";
 
 import {
@@ -8,6 +6,8 @@ import {
   moveCenter,
   normalizeBearing,
 } from "./lib/flight.js";
+
+const { maplibregl } = window;
 
 const LIMA_CENTER = [-84.105006, 40.7399785];
 const MAP_STYLE = "https://tiles.openfreemap.org/styles/liberty";
@@ -115,6 +115,28 @@ function showToast(message, duration = 3_200) {
   toastTimer = window.setTimeout(() => elements.toast.classList.remove("is-visible"), duration);
 }
 
+async function fetchJson(url) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`${url} returned ${response.status}`);
+  return response.json();
+}
+
+async function loadDetailData() {
+  if (!("DecompressionStream" in window)) return fetchJson(`${DATA_BASE}lima-detail.json`);
+
+  try {
+    const response = await fetch(`${DATA_BASE}lima-detail.json.gz`);
+    if (!response.ok || !response.body) throw new Error(`compressed detail returned ${response.status}`);
+    const stream = response.headers.get("content-encoding")
+      ? response.body
+      : response.body.pipeThrough(new DecompressionStream("gzip"));
+    return new Response(stream).json();
+  } catch (error) {
+    console.debug("Compressed detail unavailable; using JSON fallback", error);
+    return fetchJson(`${DATA_BASE}lima-detail.json`);
+  }
+}
+
 function safePaint(map, layerId, property, value) {
   if (!map.getLayer(layerId)) return;
   try {
@@ -138,7 +160,7 @@ function layerAnchor(map, preferredId) {
   return map.getStyle().layers.find((layer) => layer.type === "symbol")?.id;
 }
 
-function addLimaLayers(map) {
+function addLimaLayers(map, detailData) {
   const beforeBuildings = layerAnchor(map, "building-3d");
   const beforeLabels = layerAnchor(map);
 
@@ -148,7 +170,7 @@ function addLimaLayers(map) {
   });
   map.addSource("lima-detail", {
     type: "geojson",
-    data: `${DATA_BASE}lima-detail.json`,
+    data: detailData,
     generateId: false,
   });
 
@@ -759,6 +781,10 @@ function attachPerformanceReadout(map) {
 }
 
 function initializeMap() {
+  if (!maplibregl) {
+    elements.loading.innerHTML = "<p>Map renderer unavailable</p><small>Check your connection and reload.</small>";
+    return null;
+  }
   if (!("WebGL2RenderingContext" in window)) {
     elements.loading.innerHTML = "<p>WebGL is unavailable</p><small>Open this page in a modern hardware-accelerated browser.</small>";
     return null;
@@ -797,18 +823,26 @@ function initializeMap() {
     window.setTimeout(() => elements.loading.remove(), 700);
   }
 
-  map.on("load", () => {
+  map.on("load", async () => {
     labelLayerIds = map
       .getStyle()
       .layers.filter((layer) => layer.type === "symbol")
       .map((layer) => layer.id);
     styleBaseMap(map, "day");
-    addLimaLayers(map);
-    loaded = true;
-    elements.renderStatus.textContent = "READY";
-    updateCameraReadout(map);
-    attachPopupInteractions(map);
-    map.once("idle", dismissLoading);
+    try {
+      const detailData = await loadDetailData();
+      addLimaLayers(map, detailData);
+      loaded = true;
+      elements.renderStatus.textContent = "READY";
+      updateCameraReadout(map);
+      attachPopupInteractions(map);
+      map.once("idle", dismissLoading);
+    } catch (error) {
+      console.error("Lima detail failed to load", error);
+      elements.loading.querySelector("p").textContent = "City detail unavailable";
+      elements.loading.querySelector("small").textContent = "Check your connection and reload";
+      elements.renderStatus.textContent = "OFFLINE";
+    }
   });
 
   map.on("movestart", () => {

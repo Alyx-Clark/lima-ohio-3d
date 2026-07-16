@@ -32,10 +32,11 @@ The control deck includes six camera presets, layer toggles, daylight/golden/nig
 The application is deliberately static and framework-light:
 
 - Vite builds plain HTML, CSS, and JavaScript.
-- MapLibre GL JS performs WebGL vector and 3D rendering.
+- A pinned, integrity-checked MapLibre GL JS CDN build performs WebGL vector and 3D rendering.
 - OpenFreeMap supplies keyless, globally tiled OpenStreetMap data.
 - A build-time Node script converts a Lima Overpass extract into static GeoJSON.
 - Progressive minimum zooms keep paths, furniture, and inferred trees out of the GPU workload until they are visible.
+- Modern browsers fetch a precompressed city-detail payload (about 377 KB instead of 2.25 MB); the plain JSON remains as a compatibility fallback.
 - An adaptive safeguard hides only inferred tree crowns after sustained low framerate; mapped data remains available.
 
 No backend, database, container, daemon, or client API key is required.

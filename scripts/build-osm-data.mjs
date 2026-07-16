@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { gzipSync } from "node:zlib";
 
 const [, , inputPath, outputDirectory = "public/data"] = process.argv;
 
@@ -312,10 +313,12 @@ const metadata = {
   counts,
   note: "Inferred trees are deterministic visual proxies inside mapped parks, gardens, and forests; they are not surveyed tree locations.",
 };
+const detailJson = JSON.stringify(detail);
 
 await mkdir(outputDirectory, { recursive: true });
 await Promise.all([
-  writeFile(path.join(outputDirectory, "lima-detail.json"), JSON.stringify(detail)),
+  writeFile(path.join(outputDirectory, "lima-detail.json"), detailJson),
+  writeFile(path.join(outputDirectory, "lima-detail.json.gz"), gzipSync(detailJson, { level: 9 })),
   writeFile(path.join(outputDirectory, "lima-boundary.json"), JSON.stringify(boundary)),
   writeFile(path.join(outputDirectory, "lima-metadata.json"), `${JSON.stringify(metadata, null, 2)}\n`),
 ]);
