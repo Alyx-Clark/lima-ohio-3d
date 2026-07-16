@@ -7,11 +7,22 @@ const DATA_PATH = new URL("../../public/data/lima-detail.json", import.meta.url)
 const BOUNDARY_PATH = new URL("../../public/data/lima-boundary.json", import.meta.url);
 const METADATA_PATH = new URL("../../public/data/lima-metadata.json", import.meta.url);
 const COMPRESSED_PATH = new URL("../../public/data/lima-detail.json.gz", import.meta.url);
+const BUILDING_METADATA_PATH = new URL("../../public/data/lima-buildings-metadata.json", import.meta.url);
+const BUILDING_TILES_PATH = new URL("../../public/data/lima-buildings.pmtiles", import.meta.url);
+const TREE_METADATA_PATH = new URL("../../public/data/lima-trees-metadata.json", import.meta.url);
+const TREE_PATH = new URL("../../public/data/lima-trees.json", import.meta.url);
+const COMPRESSED_TREE_PATH = new URL("../../public/data/lima-trees.json.gz", import.meta.url);
 
 const [detail, boundary, metadata] = await Promise.all(
   [DATA_PATH, BOUNDARY_PATH, METADATA_PATH].map(async (url) => JSON.parse(await readFile(url, "utf8"))),
 );
 const compressedDetail = await readFile(COMPRESSED_PATH);
+const [buildingMetadata, treeMetadata, treeInventory] = await Promise.all(
+  [BUILDING_METADATA_PATH, TREE_METADATA_PATH, TREE_PATH].map(async (url) =>
+    JSON.parse(await readFile(url, "utf8")),
+  ),
+);
+const compressedTrees = await readFile(COMPRESSED_TREE_PATH);
 
 function categoryCount(category) {
   return detail.features.filter((feature) => feature.properties.category === category).length;
@@ -57,4 +68,22 @@ test("the compressed startup payload stays below 400 KB", async () => {
   const file = await stat(COMPRESSED_PATH);
   assert.ok(file.size < 400_000, `compressed detail is ${file.size.toLocaleString()} bytes`);
   assert.deepEqual(JSON.parse(gunzipSync(compressedDetail)), detail);
+});
+
+test("the measured building archive covers Lima without becoming a startup payload", async () => {
+  const archive = await stat(BUILDING_TILES_PATH);
+  assert.equal(buildingMetadata.release, "2026-06-17.0");
+  assert.ok(buildingMetadata.counts.buildings > 24_000);
+  assert.ok(buildingMetadata.counts.source_heights / buildingMetadata.counts.buildings > 0.97);
+  assert.ok(buildingMetadata.counts.normalized_low_heights > 1_500);
+  assert.ok(archive.size < 11_000_000, `building archive is ${archive.size.toLocaleString()} bytes`);
+});
+
+test("LiDAR canopy inventory matches metadata and stays compact", async () => {
+  const compressed = await stat(COMPRESSED_TREE_PATH);
+  assert.equal(treeInventory.trees.length, treeMetadata.counts.lidarTreeCrowns);
+  assert.ok(treeInventory.trees.length > 125_000);
+  assert.ok(treeInventory.trees.every((tree) => tree.length === 5 && tree.every(Number.isFinite)));
+  assert.ok(compressed.size < 1_300_000, `compressed canopy is ${compressed.size.toLocaleString()} bytes`);
+  assert.deepEqual(JSON.parse(gunzipSync(compressedTrees)), treeInventory);
 });

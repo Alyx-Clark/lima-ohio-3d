@@ -1,0 +1,22 @@
+{
+  "city": "Lima, Ohio",
+  "bounds": [
+    -84.1650988,
+    40.687659,
+    -84.0708798,
+    40.7956561
+  ],
+  "generatedAt": "2026-07-16T18:01:55.885Z",
+  "source": "Overture Maps buildings",
+  "release": "2026-06-17.0",
+  "license": "ODbL 1.0; source attributions documented in DATA_LICENSE.md",
+  "counts": {
+    "buildings": 24718,
+    "measured_heights": 22118,
+    "source_heights": 24179,
+    "normalized_low_heights": 2061,
+    "inferred_heights": 539,
+    "average_measured_height": 4.04
+  },
+  "note": "Source height values below 2.2 m are labeled normalized and use class-aware visualization defaults. Missing heights remain labeled inferred."
+}

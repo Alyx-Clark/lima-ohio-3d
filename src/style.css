@@ -439,10 +439,47 @@ input:checked + .switch::after {
 .legend-swatch--path { background: #d8cbb3; }
 .legend-swatch--label { background: #dfe6e2; }
 .legend-swatch--terrain { background: #8c765a; }
+.legend-swatch--aerial {
+  background: linear-gradient(135deg, #6d8455 0 48%, #a59a78 48% 100%);
+}
 .legend-swatch--furniture { background: #c08f47; border-radius: 50%; }
 
 .visual-section {
   padding-bottom: 17px;
+}
+
+.source-section {
+  padding-top: 14px;
+  padding-bottom: 15px;
+  background: rgba(223, 189, 104, 0.025);
+}
+
+.source-grid {
+  display: grid;
+  gap: 7px;
+  color: #85968f;
+  font-size: 8px;
+  line-height: 1.35;
+}
+
+.source-grid span {
+  display: flex;
+  align-items: baseline;
+}
+
+.source-grid span::before {
+  width: 3px;
+  height: 3px;
+  margin-right: 7px;
+  border-radius: 50%;
+  background: rgba(223, 189, 104, 0.72);
+  content: "";
+}
+
+.source-grid strong {
+  margin-right: 3px;
+  color: #d8dfdb;
+  font-weight: 700;
 }
 
 .segmented {

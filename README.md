@@ -1,19 +1,23 @@
 # Lima 3D City Explorer
 
-A detailed, GPU-accelerated 3D explorer for Lima, Ohio. It combines OpenFreeMap vector tiles with a compact, reproducible OpenStreetMap detail layer for pedestrian ways, green spaces, hedges, street furniture, and deterministic park canopy.
+A range-streamed, GPU-accelerated reconstruction of Lima, Ohio. It combines physical building heights, an aerial ground surface, LiDAR-derived canopy, OpenStreetMap street detail, and free-flight camera controls in a static web application.
 
 ## What is rendered
 
-- Every street and building available in the OpenFreeMap/OpenStreetMap vector tiles
-- 3D building footprints with source-provided heights or OpenFreeMap defaults
+- Every street available in the OpenFreeMap/OpenStreetMap vector tiles
+- 24,718 Overture building footprints; 24,179 carry source-provided height attributes and 539 use conservative class-based fallbacks
+- Procedural facade materials and shallow roof caps derived at runtime without texture downloads
+- Esri World Imagery as an optional photographic ground surface
+- 131,699 canopy objects derived from USGS 3DEP QL1 LiDAR, with per-object height and crown radius
 - 778 locally packaged pedestrian paths, footways, pedestrian streets, and steps
 - Mapped parks, gardens, forests, cemeteries, recreation grounds, and grass areas
 - Benches, lamps, signals, crossings, bus stops, bicycle parking, waste baskets, and hydrants where mapped
-- Deterministic 3D tree proxies inside mapped parks, gardens, and forest polygons
 - The official OpenStreetMap municipal boundary for Lima
 - Optional 3D terrain from public Mapzen/AWS Terrarium elevation tiles
 
-The map is a visualization, not an engineering, parcel, accessibility, or navigation authority. OpenStreetMap completeness varies. Inferred park trees communicate canopy mass and are not surveyed tree locations.
+This is an open-data reconstruction, not a live camera feed or engineering survey. The LiDAR was acquired between November 2019 and April 2020; the aerial imagery is served at runtime and its capture dates vary by source. LiDAR canopy objects represent detected crown apexes, not a certified tree inventory. Building geometry, map completeness, and imagery freshness vary by source.
+
+The build retains valid Overture heights. Source values below 2.2 meters are treated as implausible building measurements, labeled `normalized`, and replaced with class-aware defaults; records without any height remain labeled `inferred`.
 
 ## Controls
 
@@ -32,14 +36,17 @@ The control deck includes six camera presets, layer toggles, daylight/golden/nig
 The application is deliberately static and framework-light:
 
 - Vite builds plain HTML, CSS, and JavaScript.
-- A pinned, integrity-checked MapLibre GL JS CDN build performs WebGL vector and 3D rendering.
+- A pinned, integrity-checked MapLibre GL JS CDN build performs WebGL vector, raster, and 3D building rendering.
+- Overture buildings are compiled into a same-origin PMTiles archive so the browser requests only the vector-tile ranges in view.
+- Three.js renders LiDAR canopy through GPU instancing. Trees are partitioned into 650-meter chunks, culled against the camera bounds, and switch between low/high polygon crowns by zoom.
+- USGS 3DEP point clouds are normalized and sampled offline with PDAL. Overture footprints mask likely roof returns before the browser asset is written.
 - OpenFreeMap supplies keyless, globally tiled OpenStreetMap data.
 - A build-time Node script converts a Lima Overpass extract into static GeoJSON.
-- Progressive minimum zooms keep paths, furniture, and inferred trees out of the GPU workload until they are visible.
+- Progressive minimum zooms keep fine street detail and canopy out of the GPU workload until they are visible.
 - Modern browsers fetch a precompressed city-detail payload (about 377 KB instead of 2.25 MB); the plain JSON remains as a compatibility fallback.
-- An adaptive safeguard hides only inferred tree crowns after sustained low framerate; mapped data remains available.
+- An adaptive safeguard lowers canopy detail after sustained low framerate; source geometry remains available.
 
-No backend, database, container, daemon, or client API key is required.
+No backend, database, container, daemon, or client API key is required. The production files are served directly by Nginx.
 
 ## Local development
 
@@ -58,7 +65,7 @@ Then open the URL printed by Vite.
 npm run check
 ```
 
-This runs JavaScript linting, semantic HTML validation, nine camera/data-integrity tests, and an optimized production build.
+This runs JavaScript linting, semantic HTML validation, camera/data-integrity tests, and an optimized production build.
 
 ## Refreshing the local OSM detail data
 
@@ -75,6 +82,16 @@ node scripts/build-osm-data.mjs /path/to/overpass.json public/data
 ```
 
 It also refreshes the municipal boundary through Nominatim and records the OSM source timestamp in `public/data/lima-metadata.json`.
+
+The realism layers can be rebuilt separately:
+
+```bash
+npm run data:buildings  # Overture → PMTiles; requires DuckDB and Tippecanoe
+npm run data:lidar      # USGS 3DEP EPT → canopy inventory; requires PDAL
+npm run data:realism    # both in dependency order
+```
+
+The LiDAR build reads `data/source/lima-buildings.geojsonseq` to reject canopy candidates within building footprints. `npm run data:refresh` updates OSM and both realism layers; expect the LiDAR phase to take several minutes and download point-cloud ranges from the USGS public dataset.
 
 ## Static deployment
 
@@ -93,5 +110,8 @@ For the documented Nginx server, deployment requires only a versioned copy of `d
 
 - Map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright), available under the ODbL.
 - Vector tiles and style by [OpenFreeMap](https://openfreemap.org/).
+- Building footprints and height attributes from [Overture Maps Foundation](https://overturemaps.org/), available under the ODbL.
+- Aerial ground imagery © Esri and its source providers; imagery is requested at runtime and is not redistributed in this repository.
+- Canopy geometry derived from [USGS 3DEP](https://www.usgs.gov/3d-elevation-program) public-domain LiDAR.
 - Terrain tiles originate from the public Mapzen terrain tile archive hosted on AWS.
 - Application source is released under the MIT License.

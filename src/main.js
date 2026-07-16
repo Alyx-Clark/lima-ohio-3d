@@ -1,5 +1,7 @@
 import "./style.css";
 
+import { PMTiles, Protocol } from "pmtiles";
+
 import {
   flightSpeedForZoom,
   formatCoordinates,
@@ -12,6 +14,7 @@ const { maplibregl } = window;
 const LIMA_CENTER = [-84.105006, 40.7399785];
 const MAP_STYLE = "https://tiles.openfreemap.org/styles/liberty";
 const DATA_BASE = `${import.meta.env.BASE_URL}data/`;
+const BUILDINGS_PM_TILES = new URL(`${DATA_BASE}lima-buildings.pmtiles`, window.location.href).href;
 const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
 const PRESETS = {
@@ -84,10 +87,18 @@ const LIGHT_MODES = {
 };
 
 const GROUP_LAYERS = {
-  buildings: ["building", "building-3d"],
+  buildings: [
+    "building",
+    "building-3d",
+    "lima-buildings-residential",
+    "lima-buildings-urban",
+    "lima-buildings-industrial",
+    "lima-building-roofs",
+  ],
   trees: ["lima-tree-trunks", "lima-tree-crowns-mapped", "lima-tree-crowns-inferred"],
   pedestrian: ["lima-green-space", "lima-path-casing", "lima-pedestrian", "lima-steps", "lima-hedges"],
   furniture: ["lima-furniture-3d", "lima-furniture-halo", "lima-furniture", "lima-furniture-labels"],
+  aerial: ["lima-aerial"],
 };
 
 const elements = {
@@ -100,6 +111,7 @@ const elements = {
   panelToggle: document.querySelector("#panel-toggle"),
   closePanel: document.querySelector("#close-panel"),
   presetIndex: document.querySelector("#preset-index"),
+  sourceSummary: document.querySelector("#source-summary"),
   toast: document.querySelector("#toast"),
 };
 
@@ -107,6 +119,11 @@ let labelLayerIds = [];
 let loaded = false;
 let toastTimer;
 let inferredTreesAutoHidden = false;
+let lidarTreeLayer;
+let activeLightMode = "day";
+
+const pmtilesProtocol = maplibregl ? new Protocol() : null;
+if (pmtilesProtocol) maplibregl.addProtocol("pmtiles", pmtilesProtocol.tile);
 
 function showToast(message, duration = 3_200) {
   window.clearTimeout(toastTimer);
@@ -121,11 +138,11 @@ async function fetchJson(url) {
   return response.json();
 }
 
-async function loadDetailData() {
-  if (!("DecompressionStream" in window)) return fetchJson(`${DATA_BASE}lima-detail.json`);
+async function loadCompressedJson(name) {
+  if (!("DecompressionStream" in window)) return fetchJson(`${DATA_BASE}${name}.json`);
 
   try {
-    const response = await fetch(`${DATA_BASE}lima-detail.json.gz`);
+    const response = await fetch(`${DATA_BASE}${name}.json.gz`);
     if (!response.ok || !response.body) throw new Error(`compressed detail returned ${response.status}`);
     const stream = response.headers.get("content-encoding")
       ? response.body
@@ -133,9 +150,12 @@ async function loadDetailData() {
     return new Response(stream).json();
   } catch (error) {
     console.debug("Compressed detail unavailable; using JSON fallback", error);
-    return fetchJson(`${DATA_BASE}lima-detail.json`);
+    return fetchJson(`${DATA_BASE}${name}.json`);
   }
 }
+
+const loadDetailData = () => loadCompressedJson("lima-detail");
+const loadTreeData = () => loadCompressedJson("lima-trees");
 
 function safePaint(map, layerId, property, value) {
   if (!map.getLayer(layerId)) return;
@@ -160,9 +180,219 @@ function layerAnchor(map, preferredId) {
   return map.getStyle().layers.find((layer) => layer.type === "symbol")?.id;
 }
 
+function createFacadePattern(facadeType, mode) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 96;
+  canvas.height = 96;
+  const context = canvas.getContext("2d", { alpha: false });
+  const palette = {
+    day: {
+      residential: ["#c9c1ae", "#9b927f", "#4f6770", "#d8d0bd"],
+      urban: ["#9b7463", "#6f4f44", "#36505d", "#c6aa8c"],
+      industrial: ["#a8ada8", "#7f8987", "#4a6068", "#c6c9c1"],
+    },
+    golden: {
+      residential: ["#c7ae8e", "#93765f", "#57646a", "#dbc09c"],
+      urban: ["#a36b50", "#704638", "#43555c", "#c9946d"],
+      industrial: ["#aaa18f", "#7e7668", "#536066", "#c8bda5"],
+    },
+    night: {
+      residential: ["#34403f", "#202b2c", "#d7b96e", "#52605d"],
+      urban: ["#3d3938", "#25292a", "#e1b85d", "#594d46"],
+      industrial: ["#354043", "#232d30", "#9fb4b2", "#4c595a"],
+    },
+  }[mode][facadeType];
+
+  context.fillStyle = palette[0];
+  context.fillRect(0, 0, 96, 96);
+
+  if (facadeType === "residential") {
+    context.strokeStyle = palette[1];
+    context.globalAlpha = 0.34;
+    context.lineWidth = 2;
+    for (let y = 8; y < 96; y += 12) {
+      context.beginPath();
+      context.moveTo(0, y);
+      context.lineTo(96, y);
+      context.stroke();
+    }
+    context.globalAlpha = 1;
+  } else if (facadeType === "urban") {
+    context.strokeStyle = palette[3];
+    context.globalAlpha = 0.24;
+    context.lineWidth = 1;
+    for (let y = 0; y <= 96; y += 12) {
+      context.beginPath();
+      context.moveTo(0, y);
+      context.lineTo(96, y);
+      context.stroke();
+    }
+    for (let x = 0; x <= 96; x += 24) {
+      context.beginPath();
+      context.moveTo(x, 0);
+      context.lineTo(x, 96);
+      context.stroke();
+    }
+    context.globalAlpha = 1;
+  } else {
+    context.strokeStyle = palette[1];
+    context.globalAlpha = 0.4;
+    context.lineWidth = 2;
+    for (let x = 0; x <= 96; x += 16) {
+      context.beginPath();
+      context.moveTo(x, 0);
+      context.lineTo(x, 96);
+      context.stroke();
+    }
+    context.globalAlpha = 1;
+  }
+
+  context.fillStyle = palette[1];
+  context.fillRect(9, 17, 30, 30);
+  context.fillRect(57, 17, 30, 30);
+  context.fillRect(9, 63, 30, 24);
+  context.fillRect(57, 63, 30, 24);
+  context.fillStyle = palette[2];
+  context.fillRect(12, 20, 24, 24);
+  context.fillRect(60, 20, 24, 24);
+  context.fillRect(12, 66, 24, 18);
+  if (mode === "night") context.fillRect(60, 66, 24, 18);
+  context.strokeStyle = palette[3];
+  context.globalAlpha = 0.48;
+  for (const x of [24, 72]) {
+    context.beginPath();
+    context.moveTo(x, 18);
+    context.lineTo(x, 87);
+    context.stroke();
+  }
+  context.globalAlpha = 1;
+  return context.getImageData(0, 0, 96, 96);
+}
+
+function addFacadePatterns(map) {
+  for (const mode of Object.keys(LIGHT_MODES)) {
+    for (const facadeType of ["residential", "urban", "industrial"]) {
+      const name = `facade-${mode}-${facadeType}`;
+      if (!map.hasImage(name)) map.addImage(name, createFacadePattern(facadeType, mode), { pixelRatio: 2 });
+    }
+  }
+}
+
+function addAerialLayer(map) {
+  map.addSource("lima-aerial", {
+    type: "raster",
+    tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
+    tileSize: 256,
+    maxzoom: 19,
+    attribution: "Imagery © Esri and source contributors",
+  });
+  map.addLayer(
+    {
+      id: "lima-aerial",
+      type: "raster",
+      source: "lima-aerial",
+      minzoom: 11.7,
+      paint: {
+        "raster-opacity": ["interpolate", ["linear"], ["zoom"], 11.7, 0, 12.25, 0.72, 14, 0.9, 18, 0.97],
+        "raster-saturation": -0.08,
+        "raster-contrast": 0.08,
+        "raster-brightness-min": 0.08,
+        "raster-brightness-max": 0.94,
+        "raster-fade-duration": 140,
+      },
+    },
+    map.getLayer("road_area_pattern") ? "road_area_pattern" : layerAnchor(map),
+  );
+}
+
+function addMeasuredBuildings(map, beforeLabels) {
+  const archive = new PMTiles(BUILDINGS_PM_TILES);
+  pmtilesProtocol.add(archive);
+  map.addSource("lima-buildings", {
+    type: "vector",
+    url: `pmtiles://${BUILDINGS_PM_TILES}`,
+    attribution: "© OpenStreetMap contributors, Overture Maps Foundation",
+  });
+  addFacadePatterns(map);
+
+  const wallHeight = ["max", ["get", "min_height"], ["-", ["get", "height"], 0.34]];
+  for (const facadeType of ["residential", "urban", "industrial"]) {
+    map.addLayer(
+      {
+        id: `lima-buildings-${facadeType}`,
+        type: "fill-extrusion",
+        source: "lima-buildings",
+        "source-layer": "buildings",
+        minzoom: 13.2,
+        filter: ["==", ["get", "facade_type"], facadeType],
+        paint: {
+          "fill-extrusion-pattern": `facade-day-${facadeType}`,
+          "fill-extrusion-height": wallHeight,
+          "fill-extrusion-base": ["get", "min_height"],
+          "fill-extrusion-opacity": 0.98,
+          "fill-extrusion-vertical-gradient": true,
+        },
+      },
+      beforeLabels,
+    );
+  }
+
+  map.addLayer(
+    {
+      id: "lima-building-roofs",
+      type: "fill-extrusion",
+      source: "lima-buildings",
+      "source-layer": "buildings",
+      minzoom: 13.2,
+      paint: {
+        "fill-extrusion-color": [
+          "match",
+          ["get", "facade_type"],
+          "industrial",
+          "#b8b9b2",
+          "urban",
+          "#89766b",
+          "#9a8976",
+        ],
+        "fill-extrusion-height": ["get", "height"],
+        "fill-extrusion-base": wallHeight,
+        "fill-extrusion-opacity": 1,
+        "fill-extrusion-vertical-gradient": true,
+      },
+    },
+    beforeLabels,
+  );
+
+  if (map.getLayer("building-3d")) map.setLayerZoomRange("building-3d", 0, 13.25);
+  if (map.getLayer("building")) map.setLayerZoomRange("building", 0, 13.25);
+}
+
+function styleMeasuredBuildings(map, mode) {
+  for (const facadeType of ["residential", "urban", "industrial"]) {
+    safePaint(map, `lima-buildings-${facadeType}`, "fill-extrusion-pattern", `facade-${mode}-${facadeType}`);
+  }
+  const roofColors = {
+    day: ["#b8b9b2", "#89766b", "#9a8976"],
+    golden: ["#b4a78f", "#8f6652", "#9c7b61"],
+    night: ["#485150", "#454443", "#4c4b46"],
+  }[mode];
+  safePaint(map, "lima-building-roofs", "fill-extrusion-color", [
+    "match",
+    ["get", "facade_type"],
+    "industrial",
+    roofColors[0],
+    "urban",
+    roofColors[1],
+    roofColors[2],
+  ]);
+}
+
 function addLimaLayers(map, detailData) {
   const beforeBuildings = layerAnchor(map, "building-3d");
   const beforeLabels = layerAnchor(map);
+
+  addAerialLayer(map);
+  addMeasuredBuildings(map, beforeLabels);
 
   map.addSource("lima-boundary", {
     type: "geojson",
@@ -539,6 +769,17 @@ function styleBaseMap(map, mode = "day") {
   safePaint(map, "building-3d", "fill-extrusion-color", buildingColor);
   safePaint(map, "building-3d", "fill-extrusion-opacity", 0.91);
   safePaint(map, "building-3d", "fill-extrusion-vertical-gradient", true);
+  styleMeasuredBuildings(map, mode);
+
+  const aerialLight = {
+    day: { min: 0.08, max: 0.94, saturation: -0.08, contrast: 0.08 },
+    golden: { min: 0.08, max: 0.82, saturation: -0.02, contrast: 0.12 },
+    night: { min: 0.015, max: 0.34, saturation: -0.42, contrast: 0.18 },
+  }[mode];
+  safePaint(map, "lima-aerial", "raster-brightness-min", aerialLight.min);
+  safePaint(map, "lima-aerial", "raster-brightness-max", aerialLight.max);
+  safePaint(map, "lima-aerial", "raster-saturation", aerialLight.saturation);
+  safePaint(map, "lima-aerial", "raster-contrast", aerialLight.contrast);
 
   for (const layer of map.getStyle().layers) {
     if (layer.type === "fill" && /water/.test(layer.id)) {
@@ -554,11 +795,13 @@ function styleBaseMap(map, mode = "day") {
 }
 
 function setLighting(map, mode) {
+  activeLightMode = mode;
   document.documentElement.dataset.theme = mode;
   document.querySelectorAll("[data-light]").forEach((button) => {
     button.classList.toggle("is-active", button.dataset.light === mode);
   });
   if (loaded) styleBaseMap(map, mode);
+  lidarTreeLayer?.setTheme(mode);
 }
 
 function setLayerGroup(map, group, visible) {
@@ -581,7 +824,9 @@ function setLayerGroup(map, group, visible) {
     return;
   }
 
-  const ids = group === "labels" ? labelLayerIds : GROUP_LAYERS[group] || [];
+  if (group === "trees") lidarTreeLayer?.setVisible(visible);
+
+  const ids = group === "labels" ? labelLayerIds : group === "trees" && lidarTreeLayer ? [] : GROUP_LAYERS[group] || [];
   ids.forEach((id) => safeLayout(map, id, "visibility", visible ? "visible" : "none"));
 
   if (group === "trees" && visible && inferredTreesAutoHidden) {
@@ -683,7 +928,16 @@ function attachFlightControls(map) {
 }
 
 function attachPopupInteractions(map) {
-  const interactiveLayers = ["building-3d", "lima-green-space", "lima-pedestrian", "lima-furniture"];
+  const interactiveLayers = [
+    "lima-building-roofs",
+    "lima-buildings-residential",
+    "lima-buildings-urban",
+    "lima-buildings-industrial",
+    "building-3d",
+    "lima-green-space",
+    "lima-pedestrian",
+    "lima-furniture",
+  ];
 
   map.on("mousemove", (event) => {
     const features = map.queryRenderedFeatures(event.point, { layers: interactiveLayers.filter((id) => map.getLayer(id)) });
@@ -704,7 +958,12 @@ function attachPopupInteractions(map) {
     title.textContent = properties.name || properties.kind?.replaceAll("_", " ") || "Mapped feature";
     const detail = document.createElement("small");
     const height = properties.render_height || properties.height;
-    detail.textContent = height ? `Approx. ${Math.round(Number(height))} m high` : "OpenStreetMap feature";
+    const heightLabel = {
+      measured: "Source",
+      normalized: "Normalized",
+      inferred: "Estimated",
+    }[properties.height_source] || "Estimated";
+    detail.textContent = height ? `${heightLabel} ${Number(height).toFixed(1)} m high` : "Mapped feature";
     popup.append(eyebrow, title, detail);
 
     new maplibregl.Popup({ offset: 14, closeButton: true, maxWidth: "240px" })
@@ -729,6 +988,7 @@ function attachUi(map) {
 
   document.querySelector("#reset-scene").addEventListener("click", () => {
     inferredTreesAutoHidden = false;
+    lidarTreeLayer?.setReduced(false);
     document.querySelectorAll("[data-layer-toggle]").forEach((input) => {
       input.checked = input.dataset.layerToggle !== "terrain";
       setLayerGroup(map, input.dataset.layerToggle, input.checked);
@@ -769,8 +1029,9 @@ function attachPerformanceReadout(map) {
       if (lowFpsWindows >= 3 && !inferredTreesAutoHidden) {
         inferredTreesAutoHidden = true;
         safeLayout(map, "lima-tree-crowns-inferred", "visibility", "none");
+        lidarTreeLayer?.setReduced(true);
         elements.renderStatus.textContent = "ADAPTIVE";
-        showToast("Adaptive detail reduced inferred park canopy to keep flight smooth", 4_800);
+        showToast("Adaptive detail reduced distant tree geometry to keep flight smooth", 4_800);
       }
     }
     window.requestAnimationFrame(measureFrame);
@@ -830,8 +1091,22 @@ function initializeMap() {
       .map((layer) => layer.id);
     styleBaseMap(map, "day");
     try {
+      const treeLoad = Promise.all([loadTreeData(), import("./lib/tree-layer.js")]).catch((error) => {
+        console.warn("Measured tree inventory unavailable; retaining fallback canopy", error);
+        return null;
+      });
       const detailData = await loadDetailData();
       addLimaLayers(map, detailData);
+      const treeResources = await treeLoad;
+      if (treeResources) {
+        const [treeData, { createTreeLayer }] = treeResources;
+        lidarTreeLayer = createTreeLayer(maplibregl, treeData.trees);
+        lidarTreeLayer.setTheme(activeLightMode);
+        map.addLayer(lidarTreeLayer, layerAnchor(map));
+        for (const id of ["lima-tree-trunks", "lima-tree-crowns-mapped", "lima-tree-crowns-inferred"]) {
+          safeLayout(map, id, "visibility", "none");
+        }
+      }
       loaded = true;
       elements.renderStatus.textContent = "READY";
       updateCameraReadout(map);
@@ -872,11 +1147,23 @@ function initializeMap() {
 
 const map = initializeMap();
 
-fetch(`${DATA_BASE}lima-metadata.json`)
-  .then((response) => (response.ok ? response.json() : Promise.reject(new Error("metadata unavailable"))))
-  .then((metadata) => {
-    const counts = metadata.counts;
-    elements.renderStatus.title = `${counts.pedestrianWays.toLocaleString()} pedestrian ways · ${counts.inferredTrees.toLocaleString()} inferred park trees · OSM ${metadata.osmTimestamp || "snapshot"}`;
+Promise.all([
+  fetchJson(`${DATA_BASE}lima-metadata.json`),
+  fetchJson(`${DATA_BASE}lima-buildings-metadata.json`),
+  fetchJson(`${DATA_BASE}lima-trees-metadata.json`),
+])
+  .then(([detailMetadata, buildingMetadata, treeMetadata]) => {
+    const detailCounts = detailMetadata.counts;
+    const buildingCounts = buildingMetadata.counts;
+    const treeCounts = treeMetadata.counts;
+    const strong = document.createElement("strong");
+    strong.textContent = treeCounts.lidarTreeCrowns.toLocaleString();
+    elements.sourceSummary.replaceChildren(strong, " LiDAR canopy objects");
+    elements.renderStatus.title = [
+      `${buildingCounts.source_heights.toLocaleString()} source building heights`,
+      `${treeCounts.lidarTreeCrowns.toLocaleString()} LiDAR canopy objects`,
+      `${detailCounts.pedestrianWays.toLocaleString()} pedestrian ways`,
+    ].join(" · ");
   })
   .catch((error) => console.debug(error));
 

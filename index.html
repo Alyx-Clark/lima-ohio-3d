@@ -7,11 +7,12 @@
     <link rel="icon" href="/favicon.svg" type="image/svg+xml">
     <meta
       name="description"
-      content="Fly through a detailed, interactive 3D rendering of Lima, Ohio."
+      content="Fly through a realistic interactive 3D rendering of Lima, Ohio, built from aerial imagery, measured building heights, and LiDAR canopy."
     >
     <link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin>
     <link rel="preconnect" href="https://fonts.openfreemap.org" crossorigin>
     <link rel="preconnect" href="https://s3.amazonaws.com" crossorigin>
+    <link rel="preconnect" href="https://server.arcgisonline.com" crossorigin>
     <link rel="preconnect" href="https://unpkg.com" crossorigin>
     <link
       rel="stylesheet"
@@ -41,8 +42,8 @@
         <div class="loading__mark" aria-hidden="true">
           <span></span><span></span><span></span>
         </div>
-        <p>Building Lima</p>
-        <small>streets · structures · landscape</small>
+        <p>Reconstructing Lima</p>
+        <small>aerial surface · measured heights · LiDAR canopy</small>
       </div>
 
       <header class="masthead">
@@ -155,6 +156,11 @@
               <i class="switch" aria-hidden="true"></i>
             </label>
             <label class="switch-row">
+              <span><i class="legend-swatch legend-swatch--aerial"></i>Aerial surface</span>
+              <input type="checkbox" data-layer-toggle="aerial" checked>
+              <i class="switch" aria-hidden="true"></i>
+            </label>
+            <label class="switch-row">
               <span><i class="legend-swatch legend-swatch--furniture"></i>Street furniture</span>
               <input type="checkbox" data-layer-toggle="furniture" checked>
               <i class="switch" aria-hidden="true"></i>
@@ -170,6 +176,18 @@
             <button type="button" data-light="day" class="is-active">Day</button>
             <button type="button" data-light="golden">Golden</button>
             <button type="button" data-light="night">Night</button>
+          </div>
+        </section>
+
+        <section class="control-section source-section" aria-labelledby="source-heading">
+          <div class="section-heading">
+            <h2 id="source-heading">Reality data</h2>
+            <span>OBSERVED</span>
+          </div>
+          <div class="source-grid">
+            <span><strong>24,179</strong> source building heights</span>
+            <span id="source-summary"><strong>LiDAR</strong> individual canopy loading</span>
+            <span><strong>Aerial</strong> photographic ground surface</span>
           </div>
         </section>
 
@@ -197,10 +215,11 @@
       <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
       <footer class="attribution">
-        Visualization data ©
+        Map data ©
         <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a>
-        contributors · tiles by
-        <a href="https://openfreemap.org" target="_blank" rel="noreferrer">OpenFreeMap</a>
+        · <a href="https://overturemaps.org" target="_blank" rel="noreferrer">Overture Maps</a>
+        · imagery © <a href="https://www.esri.com" target="_blank" rel="noreferrer">Esri</a> and sources
+        · LiDAR <a href="https://www.usgs.gov/3d-elevation-program" target="_blank" rel="noreferrer">USGS 3DEP</a>
       </footer>
     </main>
     <noscript>This explorer requires JavaScript and WebGL.</noscript>

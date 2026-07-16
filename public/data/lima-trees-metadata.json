@@ -1,0 +1,23 @@
+{
+  "city": "Lima, Ohio",
+  "bounds": [
+    -84.1650988,
+    40.687659,
+    -84.0708798,
+    40.7956561
+  ],
+  "generatedAt": "2026-07-16T17:56:37.165Z",
+  "source": {
+    "name": "USGS 3DEP / Ohio Statewide Phase 1 QL1 LiDAR",
+    "dataset": "OH_Statewide_Phase1_5_2019",
+    "acquisition": "2019-11-04 to 2020-04-27",
+    "lidarQuality": "QL1",
+    "license": "U.S. Government public domain",
+    "method": "PDAL height-above-ground normalization followed by height-sorted Poisson canopy-apex selection; building-footprint masking removes roof returns"
+  },
+  "counts": {
+    "lidarTreeCrowns": 131699,
+    "rejectedBuildingReturns": 34921,
+    "rejectedDuplicateReturns": 7236
+  }
+}

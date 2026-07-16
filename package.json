@@ -13,7 +13,10 @@
     "check": "npm run lint && npm run test && npm run build",
     "data:fetch": "node scripts/fetch-osm.mjs data/source/lima-overpass.json",
     "data:build": "node scripts/build-osm-data.mjs data/source/lima-overpass.json public/data",
-    "data:refresh": "npm run data:fetch && npm run data:build"
+    "data:buildings": "node scripts/build-overture-buildings.mjs public/data",
+    "data:lidar": "node scripts/build-lidar-trees.mjs public/data",
+    "data:realism": "npm run data:buildings && npm run data:lidar",
+    "data:refresh": "npm run data:fetch && npm run data:build && npm run data:realism"
   },
   "devDependencies": {
     "eslint": "^10.7.0",
@@ -23,5 +26,9 @@
   },
   "engines": {
     "node": ">=22.12"
+  },
+  "dependencies": {
+    "pmtiles": "^4.4.1",
+    "three": "^0.185.1"
   }
 }
