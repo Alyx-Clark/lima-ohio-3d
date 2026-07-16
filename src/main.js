@@ -269,6 +269,21 @@ function createFacadePattern(facadeType, mode) {
   return context.getImageData(0, 0, 96, 96);
 }
 
+function createFallbackMapIcon() {
+  const canvas = document.createElement("canvas");
+  canvas.width = 24;
+  canvas.height = 24;
+  const context = canvas.getContext("2d");
+  context.fillStyle = "rgba(15, 34, 28, 0.88)";
+  context.strokeStyle = "rgba(231, 199, 116, 0.94)";
+  context.lineWidth = 2;
+  context.beginPath();
+  context.arc(12, 12, 6.5, 0, Math.PI * 2);
+  context.fill();
+  context.stroke();
+  return context.getImageData(0, 0, 24, 24);
+}
+
 function addFacadePatterns(map) {
   for (const mode of Object.keys(LIGHT_MODES)) {
     for (const facadeType of ["residential", "urban", "industrial"]) {
@@ -1070,6 +1085,10 @@ function initializeMap() {
     keyboard: false,
     pixelRatio: Math.min(window.devicePixelRatio || 1, 1.5),
     canvasContextAttributes: { antialias: true, powerPreference: "high-performance" },
+  });
+
+  map.on("styleimagemissing", ({ id }) => {
+    if (!map.hasImage(id)) map.addImage(id, createFallbackMapIcon(), { pixelRatio: 2 });
   });
 
   map.addControl(new maplibregl.NavigationControl({ visualizePitch: true, showCompass: true }), "bottom-right");

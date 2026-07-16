@@ -5,9 +5,9 @@ const EARTH_METERS_PER_DEGREE = 111_320;
 const CHUNK_METERS = 650;
 
 const PALETTES = {
-  day: ["#245f37", "#327444", "#3f8250", "#507d43"],
-  golden: ["#345f35", "#47713b", "#587b43", "#6a7840"],
-  night: ["#173827", "#20442e", "#285038", "#314936"],
+  day: ["#3f8d4c", "#4f9e59", "#61aa67", "#71955a"],
+  golden: ["#527d3f", "#648c45", "#78984c", "#899354"],
+  night: ["#254b33", "#2f5a3b", "#396846", "#496044"],
 };
 
 export function localMeters(longitude, latitude, center = CENTER) {
@@ -127,7 +127,8 @@ export function createTreeLayer(maplibregl, trees, options = {}) {
       this.map = map;
       this.camera = new THREE.Camera();
       this.scene = new THREE.Scene();
-      this.scene.add(new THREE.HemisphereLight(0xe9f3e9, 0x465043, 1.65));
+      this.scene.add(new THREE.AmbientLight(0xffffff, 1.15));
+      this.scene.add(new THREE.HemisphereLight(0xf2fff2, 0x6d765f, 2.05));
       const sun = new THREE.DirectionalLight(0xfff0d2, 2.35);
       sun.position.set(-0.45, -0.8, 1.4).normalize();
       this.scene.add(sun);
@@ -140,8 +141,13 @@ export function createTreeLayer(maplibregl, trees, options = {}) {
         crownHigh: new THREE.DodecahedronGeometry(1, 1),
       };
       const materials = {
-        trunk: new THREE.MeshStandardMaterial({ color: 0x5c4431, roughness: 1, metalness: 0 }),
-        crown: new THREE.MeshStandardMaterial({ roughness: 0.92, metalness: 0, vertexColors: true }),
+        trunk: new THREE.MeshLambertMaterial({ color: 0x79583d, emissive: 0x1f130c, emissiveIntensity: 0.18 }),
+        crown: new THREE.MeshLambertMaterial({
+          color: 0xffffff,
+          emissive: 0x17351f,
+          emissiveIntensity: 0.22,
+          vertexColors: true,
+        }),
       };
 
       this.resources = { geometries, materials };
@@ -163,6 +169,7 @@ export function createTreeLayer(maplibregl, trees, options = {}) {
       });
       this.renderer.autoClear = false;
       this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+      this.renderer.toneMapping = THREE.NoToneMapping;
     },
 
     render(gl, args) {
