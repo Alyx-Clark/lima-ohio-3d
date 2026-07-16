@@ -31,7 +31,7 @@ The application displays Overture attribution persistently. Valid source-provide
 
 ## USGS 3DEP LiDAR
 
-`public/data/lima-trees.json` and its compressed counterpart are derived from the USGS 3DEP `OH_Statewide_Phase1_5_2019` QL1 point cloud, acquired from November 4, 2019 through April 27, 2020. U.S. Geological Survey-authored data are public domain unless otherwise noted:
+`public/data/lima-trees.json` and its compressed counterpart are derived from the adjacent USGS 3DEP `OH_Statewide_Phase1_2_2019` and `OH_Statewide_Phase1_5_2019` QL1 point clouds, acquired from November 4, 2019 through April 27, 2020. U.S. Geological Survey-authored data are public domain unless otherwise noted:
 
 - https://www.usgs.gov/3d-elevation-program
 - https://registry.opendata.aws/usgs-lidar/
@@ -51,4 +51,4 @@ Optional terrain uses the public Mapzen/AWS terrain tile archive. Terrain is dis
 
 ## Legacy inferred vegetation fallback
 
-The OSM detail snapshot retains deterministic park-canopy proxies as a compatibility fallback when the LiDAR asset or custom WebGL layer cannot load. The production renderer hides this fallback after the LiDAR layer initializes. These proxies are derivative visual features based on mapped land-use geometry, not observed or surveyed individual trees.
+The OSM detail snapshot retains deterministic park-canopy proxies as a compatibility fallback when the LiDAR asset or native extrusion manager cannot load. The production renderer hides this fallback after the LiDAR layer initializes. These proxies are derivative visual features based on mapped land-use geometry, not observed or surveyed individual trees.

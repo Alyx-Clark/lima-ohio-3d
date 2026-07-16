@@ -9,7 +9,16 @@ const execFileAsync = promisify(execFile);
 
 const EARTH_RADIUS = 6_378_137;
 const CITY_BOUNDS = [-84.1650988, 40.687659, -84.0708798, 40.7956561];
-const LIDAR_URL = "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/OH_Statewide_Phase1_5_2019/ept.json";
+const LIDAR_SOURCES = [
+  {
+    id: "OH_Statewide_Phase1_2_2019",
+    url: "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/OH_Statewide_Phase1_2_2019/ept.json",
+  },
+  {
+    id: "OH_Statewide_Phase1_5_2019",
+    url: "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/OH_Statewide_Phase1_5_2019/ept.json",
+  },
+];
 const OUTPUT_DIRECTORY = path.resolve(process.argv.find((argument) => !argument.startsWith("--") && argument !== process.argv[1] && argument !== process.argv[0]) || "public/data");
 const SAMPLE_MODE = process.argv.includes("--sample");
 const BUILDING_SOURCE = path.resolve("data/source/lima-buildings.geojsonseq");
@@ -133,15 +142,24 @@ function processingTiles() {
   return tiles;
 }
 
-function pipelineFor(tile, candidatesPath) {
+function sourcesForTile(tile) {
+  const [, south] = unproject(tile.slice(0, 2));
+  const [, north] = unproject(tile.slice(2, 4));
+  if (north <= 40.7276) return [LIDAR_SOURCES[1]];
+  if (south >= 40.74) return [LIDAR_SOURCES[0]];
+  return LIDAR_SOURCES;
+}
+
+function pipelineFor(tile, candidatesPath, source) {
   return {
     pipeline: [
       {
         type: "readers.ept",
-        filename: LIDAR_URL,
+        filename: source.url,
         bounds: boundsString(tile, SAMPLE_MODE ? 0 : TILE_OVERLAP),
         resolution: SAMPLE_MODE ? 2.2 : 2.8,
         requests: 12,
+        ignore_unreadable: true,
       },
       { type: "filters.hag_nn", count: 8, max_distance: 24 },
       {
@@ -163,29 +181,39 @@ function pipelineFor(tile, candidatesPath) {
   };
 }
 
-async function processTile(tile, index, total) {
+async function processTile(job, index, total) {
   const pipelinePath = path.join(temporaryDirectory, `tree-pipeline-${index}.json`);
   const candidatesPath = path.join(temporaryDirectory, `tree-candidates-${index}.csv`);
-  await writeFile(pipelinePath, JSON.stringify(pipelineFor(tile, candidatesPath)));
-  const { stderr } = await execFileAsync("pdal", ["pipeline", pipelinePath], {
-    maxBuffer: 32 * 1024 * 1024,
-    timeout: SAMPLE_MODE ? 5 * 60_000 : 12 * 60_000,
-  });
+  await writeFile(pipelinePath, JSON.stringify(pipelineFor(job.tile, candidatesPath, job.source)));
+  let stderr = "";
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      ({ stderr } = await execFileAsync("pdal", ["pipeline", pipelinePath], {
+        maxBuffer: 32 * 1024 * 1024,
+        timeout: SAMPLE_MODE ? 5 * 60_000 : 12 * 60_000,
+      }));
+      break;
+    } catch (error) {
+      if (attempt === 3) throw error;
+      console.warn(`Retrying LiDAR tile ${index + 1}/${total} after attempt ${attempt}…`);
+      await new Promise((resolve) => setTimeout(resolve, attempt * 1_000));
+    }
+  }
   if (stderr.trim()) console.error(stderr.trim());
-  console.log(`LiDAR tile ${index + 1}/${total} complete`);
+  console.log(`LiDAR tile ${index + 1}/${total} complete · ${job.source.id}`);
   return candidatesPath;
 }
 
-async function processTiles(tiles) {
-  const output = new Array(tiles.length);
+async function processTiles(jobs) {
+  const output = new Array(jobs.length);
   let next = 0;
-  const concurrency = SAMPLE_MODE ? 1 : Math.min(3, tiles.length);
+  const concurrency = SAMPLE_MODE ? 1 : Math.min(6, jobs.length);
   await Promise.all(
     Array.from({ length: concurrency }, async () => {
-      while (next < tiles.length) {
+      while (next < jobs.length) {
         const index = next;
         next += 1;
-        output[index] = await processTile(tiles[index], index, tiles.length);
+        output[index] = await processTile(jobs[index], index, jobs.length);
       }
     }),
   );
@@ -206,8 +234,11 @@ function nearbyAccepted(x, y, acceptedIndex) {
 
 try {
   const tiles = processingTiles();
-  console.log(`${SAMPLE_MODE ? "Sampling" : `Processing ${tiles.length} tiles of`} classified Ohio QL1 LiDAR canopy…`);
-  const candidatePaths = await processTiles(tiles);
+  const jobs = SAMPLE_MODE
+    ? [{ source: LIDAR_SOURCES[0], tile: tiles[0] }]
+    : tiles.flatMap((tile) => sourcesForTile(tile).map((source) => ({ source, tile })));
+  console.log(`${SAMPLE_MODE ? "Sampling" : `Processing ${jobs.length} work-unit tiles of`} classified Ohio QL1 LiDAR canopy…`);
+  const candidatePaths = await processTiles(jobs);
 
   const boundary = JSON.parse(await readFile(path.join(OUTPUT_DIRECTORY, "lima-boundary.json"), "utf8"));
   const geometry = boundary.features[0].geometry;
@@ -259,7 +290,7 @@ try {
   } else {
     const source = {
       name: "USGS 3DEP / Ohio Statewide Phase 1 QL1 LiDAR",
-      dataset: "OH_Statewide_Phase1_5_2019",
+      datasets: LIDAR_SOURCES.map(({ id }) => id),
       acquisition: "2019-11-04 to 2020-04-27",
       lidarQuality: "QL1",
       license: "U.S. Government public domain",

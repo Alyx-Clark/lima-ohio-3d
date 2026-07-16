@@ -1121,9 +1121,9 @@ function initializeMap() {
       const treeResources = await treeLoad;
       if (treeResources) {
         const [treeData, { createTreeLayer }] = treeResources;
-        lidarTreeLayer = createTreeLayer(maplibregl, treeData.trees);
+        lidarTreeLayer = createTreeLayer(treeData.trees);
         lidarTreeLayer.setTheme(activeLightMode);
-        map.addLayer(lidarTreeLayer, layerAnchor(map));
+        lidarTreeLayer.addTo(map, layerAnchor(map));
         for (const id of ["lima-tree-trunks", "lima-tree-crowns-mapped", "lima-tree-crowns-inferred"]) {
           safeLayout(map, id, "visibility", "none");
         }

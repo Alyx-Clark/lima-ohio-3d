@@ -28,7 +28,6 @@
     "node": ">=22.12"
   },
   "dependencies": {
-    "pmtiles": "^4.4.1",
-    "three": "^0.185.1"
+    "pmtiles": "^4.4.1"
   }
 }

@@ -82,8 +82,25 @@ test("the measured building archive covers Lima without becoming a startup paylo
 test("LiDAR canopy inventory matches metadata and stays compact", async () => {
   const compressed = await stat(COMPRESSED_TREE_PATH);
   assert.equal(treeInventory.trees.length, treeMetadata.counts.lidarTreeCrowns);
-  assert.ok(treeInventory.trees.length > 125_000);
+  assert.ok(treeInventory.trees.length > 260_000);
   assert.ok(treeInventory.trees.every((tree) => tree.length === 5 && tree.every(Number.isFinite)));
-  assert.ok(compressed.size < 1_300_000, `compressed canopy is ${compressed.size.toLocaleString()} bytes`);
+  assert.ok(compressed.size < 2_500_000, `compressed canopy is ${compressed.size.toLocaleString()} bytes`);
   assert.deepEqual(JSON.parse(gunzipSync(compressedTrees)), treeInventory);
+});
+
+test("LiDAR canopy spans the southern and northern municipal extents", () => {
+  const latitudes = treeInventory.trees.map((tree) => tree[1]);
+  const minimumLatitude = latitudes.reduce((minimum, latitude) => Math.min(minimum, latitude), Infinity);
+  const maximumLatitude = latitudes.reduce((maximum, latitude) => Math.max(maximum, latitude), -Infinity);
+  assert.ok(minimumLatitude < 40.7);
+  assert.ok(maximumLatitude > 40.78);
+  assert.ok(
+    treeInventory.trees.every(
+      ([longitude, latitude]) =>
+        longitude >= treeMetadata.bounds[0] &&
+        longitude <= treeMetadata.bounds[2] &&
+        latitude >= treeMetadata.bounds[1] &&
+        latitude <= treeMetadata.bounds[3],
+    ),
+  );
 });

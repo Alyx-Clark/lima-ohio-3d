@@ -1,14 +1,27 @@
-import * as THREE from "three";
-
 const CENTER = [-84.105006, 40.7399785];
 const EARTH_METERS_PER_DEGREE = 111_320;
 const CHUNK_METERS = 650;
+const EMPTY_COLLECTION = { type: "FeatureCollection", features: [] };
 
 const PALETTES = {
-  day: ["#3f8d4c", "#4f9e59", "#61aa67", "#71955a"],
-  golden: ["#527d3f", "#648c45", "#78984c", "#899354"],
-  night: ["#254b33", "#2f5a3b", "#396846", "#496044"],
+  day: {
+    trunk: "#79583d",
+    lower: ["#397d45", "#478d50", "#55985b", "#66884f"],
+    upper: ["#4c9859", "#5aa663", "#69b16e", "#799b60"],
+  },
+  golden: {
+    trunk: "#805c3b",
+    lower: ["#50713b", "#5d7d40", "#6c8746", "#7b8248"],
+    upper: ["#66844a", "#738f50", "#839956", "#918f54"],
+  },
+  night: {
+    trunk: "#3c3028",
+    lower: ["#1c402b", "#254b32", "#2d563a", "#36513a"],
+    upper: ["#28543a", "#326044", "#3b6a4b", "#49634a"],
+  },
 };
+
+const TREE_LAYER_IDS = ["lima-lidar-tree-trunks", "lima-lidar-tree-lower", "lima-lidar-tree-upper"];
 
 export function localMeters(longitude, latitude, center = CENTER) {
   return [
@@ -50,181 +63,227 @@ function paddedViewBounds(map) {
   const south = bounds.getSouth();
   const east = bounds.getEast();
   const north = bounds.getNorth();
-  const longitudePadding = (east - west) * 0.22;
-  const latitudePadding = (north - south) * 0.22;
+  const longitudePadding = (east - west) * 0.3;
+  const latitudePadding = (north - south) * 0.3;
   return [west - longitudePadding, south - latitudePadding, east + longitudePadding, north + latitudePadding];
 }
 
-function createMeshes(chunk, geometries, materials) {
-  const count = chunk.trees.length;
-  const trunk = new THREE.InstancedMesh(geometries.trunk, materials.trunk, count);
-  const crownLow = new THREE.InstancedMesh(geometries.crownLow, materials.crown, count);
-  const crownHigh = new THREE.InstancedMesh(geometries.crownHigh, materials.crown, count);
-  const matrix = new THREE.Matrix4();
-  const position = new THREE.Vector3();
-  const rotation = new THREE.Quaternion();
-  const scale = new THREE.Vector3();
-  const zAxis = new THREE.Vector3(0, 0, 1);
-
-  for (let index = 0; index < count; index += 1) {
-    const { raw, x, y } = chunk.trees[index];
-    const [, , height, crownRadius, variant] = raw;
-    const trunkHeight = Math.max(1.8, height * 0.42);
-    const trunkRadius = Math.max(0.16, Math.min(0.48, height * 0.026));
-    const crownHeight = Math.max(2.2, height - trunkHeight * 0.68);
-    const angle = ((variant * 71 + index * 29) % 360) * (Math.PI / 180);
-    rotation.setFromAxisAngle(zAxis, angle);
-
-    position.set(x, y, trunkHeight / 2);
-    scale.set(trunkRadius, trunkRadius, trunkHeight);
-    matrix.compose(position, rotation, scale);
-    trunk.setMatrixAt(index, matrix);
-
-    position.set(x, y, trunkHeight * 0.72 + crownHeight * 0.43);
-    scale.set(crownRadius * 0.94, crownRadius * (0.78 + variant * 0.035), crownHeight * 0.56);
-    matrix.compose(position, rotation, scale);
-    crownLow.setMatrixAt(index, matrix);
-    crownHigh.setMatrixAt(index, matrix);
+function ring(longitude, latitude, radius, sides, angleOffset) {
+  const longitudeScale = 1 / (EARTH_METERS_PER_DEGREE * Math.cos((latitude * Math.PI) / 180));
+  const latitudeScale = 1 / EARTH_METERS_PER_DEGREE;
+  const coordinates = [];
+  for (let side = 0; side < sides; side += 1) {
+    const angle = angleOffset + (side / sides) * Math.PI * 2;
+    coordinates.push([
+      longitude + Math.cos(angle) * radius * longitudeScale,
+      latitude + Math.sin(angle) * radius * latitudeScale,
+    ]);
   }
-
-  for (const mesh of [trunk, crownLow, crownHigh]) {
-    mesh.instanceMatrix.needsUpdate = true;
-    mesh.frustumCulled = false;
-  }
-  crownHigh.visible = false;
-  return { trunk, crownLow, crownHigh };
+  coordinates.push(coordinates[0]);
+  return coordinates;
 }
 
-function applyCrownColors(chunkMeshes, palette) {
-  const color = new THREE.Color();
-  for (let index = 0; index < chunkMeshes.data.trees.length; index += 1) {
-    const variant = chunkMeshes.data.trees[index].raw[4] % palette.length;
-    color.set(palette[variant]);
-    chunkMeshes.meshes.crownLow.setColorAt(index, color);
-    chunkMeshes.meshes.crownHigh.setColorAt(index, color);
-  }
-  chunkMeshes.meshes.crownLow.instanceColor.needsUpdate = true;
-  chunkMeshes.meshes.crownHigh.instanceColor.needsUpdate = true;
+function partFeature(tree, part, radius, base, height, sides, angleOffset) {
+  const [longitude, latitude, , , variant] = tree;
+  return {
+    type: "Feature",
+    properties: { part, variant, base: Number(base.toFixed(2)), height: Number(height.toFixed(2)) },
+    geometry: {
+      type: "Polygon",
+      coordinates: [ring(longitude, latitude, radius, sides, angleOffset)],
+    },
+  };
 }
 
-export function createTreeLayer(maplibregl, trees, options = {}) {
-  const center = options.center || CENTER;
-  const treeChunks = chunkTreeInventory(trees, options.chunkMeters || CHUNK_METERS);
-  const origin = maplibregl.MercatorCoordinate.fromLngLat(center, 0);
-  const scale = origin.meterInMercatorCoordinateUnits();
+export function treePartFeatures(tree, index = 0) {
+  const [, , height, crownRadius, variant] = tree;
+  const trunkHeight = Math.max(1.8, height * 0.44);
+  const trunkRadius = Math.max(0.16, Math.min(0.48, height * 0.026));
+  const angle = ((variant * 71 + index * 29) % 360) * (Math.PI / 180);
+  return [
+    partFeature(tree, "trunk", trunkRadius, 0, trunkHeight, 6, angle),
+    partFeature(tree, "lower", crownRadius, trunkHeight * 0.62, height * 0.81, 8, angle),
+    partFeature(tree, "upper", crownRadius * 0.73, height * 0.54, height, 7, angle + 0.19),
+  ];
+}
+
+function colorExpression(colors) {
+  return ["match", ["get", "variant"], 0, colors[0], 1, colors[1], 2, colors[2], colors[3]];
+}
+
+function cameraBatchLimit(zoom, reduced) {
+  if (reduced) return 2_800;
+  if (zoom < 15.35) return 4_500;
+  if (zoom < 16.3) return 8_500;
+  return 13_000;
+}
+
+function selectVisibleTrees(map, chunks, reduced) {
+  const view = paddedViewBounds(map);
+  const center = map.getCenter();
+  const limit = cameraBatchLimit(map.getZoom(), reduced);
+  const visibleChunks = chunks
+    .filter((chunk) => intersects(chunk.bounds, view))
+    .sort((left, right) => {
+      const leftDistance = Math.hypot(
+        (left.bounds[0] + left.bounds[2]) / 2 - center.lng,
+        (left.bounds[1] + left.bounds[3]) / 2 - center.lat,
+      );
+      const rightDistance = Math.hypot(
+        (right.bounds[0] + right.bounds[2]) / 2 - center.lng,
+        (right.bounds[1] + right.bounds[3]) / 2 - center.lat,
+      );
+      return leftDistance - rightDistance;
+    });
+
+  const trees = [];
+  for (const chunk of visibleChunks) {
+    const remaining = limit - trees.length;
+    if (remaining <= 0) break;
+    trees.push(...chunk.trees.slice(0, remaining).map((entry) => entry.raw));
+  }
+  return trees;
+}
+
+function addLayers(map, beforeId) {
+  map.addLayer(
+    {
+      id: "lima-lidar-tree-trunks",
+      type: "fill-extrusion",
+      source: "lima-lidar-trees",
+      minzoom: 15.7,
+      filter: ["==", ["get", "part"], "trunk"],
+      paint: {
+        "fill-extrusion-color": PALETTES.day.trunk,
+        "fill-extrusion-base": ["get", "base"],
+        "fill-extrusion-height": ["get", "height"],
+        "fill-extrusion-opacity": 1,
+        "fill-extrusion-vertical-gradient": true,
+      },
+    },
+    beforeId,
+  );
+  for (const part of ["lower", "upper"]) {
+    map.addLayer(
+      {
+        id: `lima-lidar-tree-${part}`,
+        type: "fill-extrusion",
+        source: "lima-lidar-trees",
+        minzoom: part === "upper" ? 15.05 : 14.7,
+        filter: ["==", ["get", "part"], part],
+        paint: {
+          "fill-extrusion-color": colorExpression(PALETTES.day[part]),
+          "fill-extrusion-base": ["get", "base"],
+          "fill-extrusion-height": ["get", "height"],
+          "fill-extrusion-opacity": 0.99,
+          "fill-extrusion-vertical-gradient": true,
+        },
+      },
+      beforeId,
+    );
+  }
+}
+
+export function createTreeLayer(trees, options = {}) {
+  const chunks = chunkTreeInventory(trees, options.chunkMeters || CHUNK_METERS);
+  let map;
+  let updateTimer;
+  let moveEndHandler;
+  let lastCameraKey = "";
   let theme = "day";
 
-  return {
+  const manager = {
     id: "lima-lidar-trees",
-    type: "custom",
-    renderingMode: "3d",
     enabled: true,
     reduced: false,
     totalTrees: trees.length,
     visibleTrees: 0,
 
-    onAdd(map, gl) {
-      this.map = map;
-      this.camera = new THREE.Camera();
-      this.scene = new THREE.Scene();
-      this.scene.add(new THREE.AmbientLight(0xffffff, 1.15));
-      this.scene.add(new THREE.HemisphereLight(0xf2fff2, 0x6d765f, 2.05));
-      const sun = new THREE.DirectionalLight(0xfff0d2, 2.35);
-      sun.position.set(-0.45, -0.8, 1.4).normalize();
-      this.scene.add(sun);
-
-      const trunkGeometry = new THREE.CylinderGeometry(1, 1.12, 1, 7, 1, false);
-      trunkGeometry.rotateX(Math.PI / 2);
-      const geometries = {
-        trunk: trunkGeometry,
-        crownLow: new THREE.IcosahedronGeometry(1, 0),
-        crownHigh: new THREE.DodecahedronGeometry(1, 1),
-      };
-      const materials = {
-        trunk: new THREE.MeshLambertMaterial({ color: 0x79583d, emissive: 0x1f130c, emissiveIntensity: 0.18 }),
-        crown: new THREE.MeshLambertMaterial({
-          color: 0xffffff,
-          emissive: 0x17351f,
-          emissiveIntensity: 0.22,
-          vertexColors: true,
-        }),
-      };
-
-      this.resources = { geometries, materials };
-      this.chunks = treeChunks.map((data) => {
-        const meshes = createMeshes(data, geometries, materials);
-        const group = new THREE.Group();
-        group.add(meshes.trunk, meshes.crownLow, meshes.crownHigh);
-        group.visible = false;
-        this.scene.add(group);
-        const chunk = { data, meshes, group };
-        applyCrownColors(chunk, PALETTES[theme]);
-        return chunk;
-      });
-
-      this.renderer = new THREE.WebGLRenderer({
-        canvas: map.getCanvas(),
-        context: gl,
-        antialias: true,
-      });
-      this.renderer.autoClear = false;
-      this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-      this.renderer.toneMapping = THREE.NoToneMapping;
+    addTo(nextMap, beforeId) {
+      map = nextMap;
+      map.addSource("lima-lidar-trees", { type: "geojson", data: EMPTY_COLLECTION });
+      addLayers(map, beforeId);
+      this.setTheme(theme);
+      map.on("move", this.scheduleUpdate);
+      moveEndHandler = () => manager.update();
+      map.on("moveend", moveEndHandler);
+      this.update(true);
     },
 
-    render(gl, args) {
-      const zoom = this.map.getZoom();
+    scheduleUpdate: () => {
+      if (updateTimer) return;
+      updateTimer = window.setTimeout(() => {
+        updateTimer = undefined;
+        manager.update();
+      }, 280);
+    },
+
+    update(force = false) {
+      if (!map?.getSource("lima-lidar-trees")) return;
+      const zoom = map.getZoom();
       const minimumZoom = this.reduced ? 16.1 : 14.7;
-      const visible = this.enabled && zoom >= minimumZoom;
-      const view = visible ? paddedViewBounds(this.map) : null;
-      const highDetail = !this.reduced && zoom >= 16.55;
-      const showTrunks = zoom >= 15.8;
-      let visibleTrees = 0;
-
-      for (const chunk of this.chunks) {
-        const chunkVisible = visible && intersects(chunk.data.bounds, view);
-        chunk.group.visible = chunkVisible;
-        if (!chunkVisible) continue;
-        visibleTrees += chunk.data.trees.length;
-        chunk.meshes.trunk.visible = showTrunks;
-        chunk.meshes.crownLow.visible = !highDetail;
-        chunk.meshes.crownHigh.visible = highDetail;
+      const center = map.getCenter();
+      const cameraKey = [
+        Math.round(center.lng / 0.0018),
+        Math.round(center.lat / 0.0018),
+        Math.round(map.getBearing() / 18),
+        Math.floor(zoom * 2),
+        this.enabled,
+        this.reduced,
+      ].join(":");
+      if (!force && cameraKey === lastCameraKey) return;
+      lastCameraKey = cameraKey;
+      if (!this.enabled || zoom < minimumZoom) {
+        this.visibleTrees = 0;
+        map.getSource("lima-lidar-trees").setData(EMPTY_COLLECTION);
+        return;
       }
-      this.visibleTrees = visibleTrees;
-      if (!visibleTrees) return;
-
-      const projection = new THREE.Matrix4().fromArray(args.defaultProjectionData.mainMatrix);
-      const model = new THREE.Matrix4()
-        .makeTranslation(origin.x, origin.y, origin.z)
-        .scale(new THREE.Vector3(scale, -scale, scale));
-      this.camera.projectionMatrix = projection.multiply(model);
-      this.renderer.resetState();
-      this.renderer.render(this.scene, this.camera);
-      this.renderer.resetState();
+      const visible = selectVisibleTrees(map, chunks, this.reduced);
+      this.visibleTrees = visible.length;
+      const features = visible.flatMap((tree, index) => treePartFeatures(tree, index));
+      map.getSource("lima-lidar-trees").setData({ type: "FeatureCollection", features });
     },
 
     setTheme(nextTheme) {
       theme = PALETTES[nextTheme] ? nextTheme : "day";
-      if (this.chunks) this.chunks.forEach((chunk) => applyCrownColors(chunk, PALETTES[theme]));
-      this.map?.triggerRepaint();
+      if (!map) return;
+      const palette = PALETTES[theme];
+      if (map.getLayer("lima-lidar-tree-trunks")) {
+        map.setPaintProperty("lima-lidar-tree-trunks", "fill-extrusion-color", palette.trunk);
+      }
+      for (const part of ["lower", "upper"]) {
+        if (map.getLayer(`lima-lidar-tree-${part}`)) {
+          map.setPaintProperty(
+            `lima-lidar-tree-${part}`,
+            "fill-extrusion-color",
+            colorExpression(palette[part]),
+          );
+        }
+      }
     },
 
     setVisible(nextVisible) {
       this.enabled = nextVisible;
-      this.map?.triggerRepaint();
+      if (map) {
+        for (const id of TREE_LAYER_IDS) {
+          if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", nextVisible ? "visible" : "none");
+        }
+      }
+      this.update(true);
     },
 
     setReduced(nextReduced) {
       this.reduced = nextReduced;
-      this.map?.triggerRepaint();
+      this.update(true);
     },
 
-    onRemove() {
-      if (this.resources) {
-        Object.values(this.resources.geometries).forEach((geometry) => geometry.dispose());
-        Object.values(this.resources.materials).forEach((material) => material.dispose());
-      }
-      this.renderer?.dispose();
+    remove() {
+      if (!map) return;
+      window.clearTimeout(updateTimer);
+      map.off("move", this.scheduleUpdate);
+      map.off("moveend", moveEndHandler);
     },
   };
+
+  return manager;
 }
