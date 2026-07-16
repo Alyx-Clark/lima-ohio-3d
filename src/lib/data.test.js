@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile, stat } from "node:fs/promises";
+import { gunzipSync } from "node:zlib";
 
 const DATA_PATH = new URL("../../public/data/lima-detail.json", import.meta.url);
 const BOUNDARY_PATH = new URL("../../public/data/lima-boundary.json", import.meta.url);
@@ -10,6 +11,7 @@ const COMPRESSED_PATH = new URL("../../public/data/lima-detail.json.gz", import.
 const [detail, boundary, metadata] = await Promise.all(
   [DATA_PATH, BOUNDARY_PATH, METADATA_PATH].map(async (url) => JSON.parse(await readFile(url, "utf8"))),
 );
+const compressedDetail = await readFile(COMPRESSED_PATH);
 
 function categoryCount(category) {
   return detail.features.filter((feature) => feature.properties.category === category).length;
@@ -54,4 +56,5 @@ test("local detail stays within the startup size budget", async () => {
 test("the compressed startup payload stays below 400 KB", async () => {
   const file = await stat(COMPRESSED_PATH);
   assert.ok(file.size < 400_000, `compressed detail is ${file.size.toLocaleString()} bytes`);
+  assert.deepEqual(JSON.parse(gunzipSync(compressedDetail)), detail);
 });
