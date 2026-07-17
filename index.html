@@ -122,6 +122,11 @@
               <span class="preset__arrow" aria-hidden="true">↗</span>
             </button>
           </div>
+          <button id="cinematic-tour" class="cinematic-button" type="button" aria-pressed="false">
+            <i aria-hidden="true"><span></span></i>
+            <span class="cinematic-button__copy"><strong>CINEMATIC TOUR</strong><small>DIRECTOR-CURATED FLYTHROUGH</small></span>
+            <b aria-hidden="true">PLAY</b>
+          </button>
         </section>
 
         <section class="control-section" aria-labelledby="layers-heading">
@@ -165,6 +170,11 @@
               <input type="checkbox" data-layer-toggle="furniture" checked>
               <i class="switch" aria-hidden="true"></i>
             </label>
+            <label class="switch-row">
+              <span><i class="legend-swatch legend-swatch--traffic"></i>Cinematic traffic</span>
+              <input type="checkbox" data-layer-toggle="traffic" checked>
+              <i class="switch" aria-hidden="true"></i>
+            </label>
           </div>
         </section>
 
@@ -188,6 +198,7 @@
             <span><strong>24,179</strong> source building heights</span>
             <span id="source-summary"><strong>LiDAR</strong> individual canopy loading</span>
             <span><strong>Aerial</strong> photographic ground surface</span>
+            <span id="traffic-summary"><strong>Traffic</strong> route network loading</span>
           </div>
         </section>
 

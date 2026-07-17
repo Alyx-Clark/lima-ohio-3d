@@ -7,15 +7,17 @@ A range-streamed, GPU-accelerated reconstruction of Lima, Ohio. It combines phys
 - Every street available in the OpenFreeMap/OpenStreetMap vector tiles
 - 24,718 Overture building footprints; 24,179 carry source-provided height attributes and 539 use conservative class-based fallbacks
 - Five deterministic facade and roof material variants per building class, generated at runtime without texture downloads
+- 4,137 deterministic rooftop units, vents, chimneys, skylights, and solar arrays placed within source building footprints
 - Esri World Imagery as an optional photographic ground surface
 - 270,515 canopy objects derived from two adjacent USGS 3DEP QL1 work units, with per-object height and crown radius
+- 4,474 OSM drivable route segments covering about 997 km, supporting up to 68 camera-bounded cinematic vehicles
 - 778 locally packaged pedestrian paths, footways, pedestrian streets, and steps
 - Mapped parks, gardens, forests, cemeteries, recreation grounds, and grass areas
 - Benches, lamps, signals, crossings, bus stops, bicycle parking, waste baskets, and hydrants where mapped
 - The official OpenStreetMap municipal boundary for Lima
 - Optional 3D terrain from public Mapzen/AWS Terrarium elevation tiles
 
-This is an open-data reconstruction, not a live camera feed or engineering survey. The LiDAR was acquired between November 2019 and April 2020; the aerial imagery is served at runtime and its capture dates vary by source. LiDAR canopy objects represent detected crown apexes, not a certified tree inventory. Building geometry, map completeness, and imagery freshness vary by source.
+This is an open-data reconstruction, not a live camera feed or engineering survey. The LiDAR was acquired between November 2019 and April 2020; the aerial imagery is served at runtime and its capture dates vary by source. LiDAR canopy objects represent detected crown apexes, not a certified tree inventory. Rooftop equipment and vehicle positions are deterministic visual simulations rather than observations. Building geometry, map completeness, and imagery freshness vary by source.
 
 The build retains valid Overture heights. Source values below 2.2 meters are treated as implausible building measurements, labeled `normalized`, and replaced with class-aware defaults; records without any height remain labeled `inferred`.
 
@@ -29,7 +31,7 @@ The build retains valid Overture heights. Source values below 2.2 meters are tre
 - `T` / `G`: tilt up and down
 - `Shift`: boost flight speed
 
-The control deck includes six camera presets, layer toggles, daylight/golden/night lighting, fullscreen, compass, pitch, and zoom controls.
+The control deck includes six camera presets, an interruptible director-curated cinematic tour, independent traffic and scene-detail toggles, daylight/golden/night lighting, fullscreen, compass, pitch, and zoom controls.
 
 ## Architecture
 
@@ -37,9 +39,11 @@ The application is deliberately static and framework-light:
 
 - Vite builds plain HTML, CSS, and JavaScript.
 - A pinned, integrity-checked MapLibre GL JS CDN build performs WebGL vector, raster, and 3D building rendering.
+- A deferred, pinned Three.js scene shares MapLibre's WebGL context for the close-range canopy and traffic. Rounded car bodies, cabins, wheels, lights, trunks, and four-lobed tree crowns are instanced into nine bounded draw groups rather than emitted as thousands of independent objects.
 - Overture buildings are compiled into a same-origin PMTiles archive so the browser requests only the vector-tile ranges in view. Range reads are revalidated to avoid stale or incomplete partial-cache entries after a reload.
-- LiDAR trees are partitioned into 650-meter spatial chunks and rendered as camera-bounded native MapLibre trunks with asymmetric three-tier crown extrusions, retaining per-object height and crown radius without a second WebGL renderer.
-- Canopy regeneration is debounced until flight settles, with zoom- and pitch-dependent 3,600/6,800/8,500-object budgets and a 6,000-object high-pitch ceiling. Crown parts also use progressive minimum zooms.
+- LiDAR trees are partitioned into 650-meter spatial chunks. Up to 2,100 camera-adjacent trees retain measured height and crown radius while being rendered as smooth, asymmetric multi-lobed game-style models; a native extrusion fallback remains available if the deferred scene cannot initialize.
+- Traffic routes are reduced to a 240 KB compressed payload. A deterministic route sampler caps the visible scene at 16/28/44/68 vehicles as zoom increases, while instancing keeps each car's body, glass, roof, wheels, headlights, taillights, and ground contact visually distinct.
+- Four thousand rooftop details are generated offline, validated inside source footprints, compressed to about 232 KB, and progressively revealed only at close zoom.
 - Day, golden-hour, and night modes now include atmospheric sky and horizon palettes. High-pitch flight automatically suppresses only distant highway shields and country/state labels to keep the horizon legible while preserving local street names.
 - USGS 3DEP point clouds are normalized and sampled offline with PDAL. Overture footprints mask likely roof returns before the browser asset is written.
 - OpenFreeMap supplies keyless, globally tiled OpenStreetMap data.
@@ -47,7 +51,7 @@ The application is deliberately static and framework-light:
 - Progressive minimum zooms keep fine street detail and canopy out of the GPU workload until they are visible.
 - Modern browsers fetch a precompressed city-detail payload (about 377 KB instead of 2.25 MB); the plain JSON remains as a compatibility fallback.
 - The full-municipality canopy inventory compresses from 9.5 MB to 2.41 MB; only a bounded camera-adjacent subset becomes render geometry.
-- An adaptive safeguard reduces the camera-adjacent canopy batch after sustained low framerate; the complete source inventory remains available as the camera moves.
+- An adaptive safeguard reduces camera-adjacent canopy and traffic batches after sustained low framerate; the complete source inventories remain available as the camera moves.
 
 No backend, database, container, daemon, or client API key is required. The production files are served directly by Nginx.
 
@@ -91,6 +95,8 @@ The realism layers can be rebuilt separately:
 ```bash
 npm run data:buildings  # Overture → PMTiles; requires DuckDB and Tippecanoe
 npm run data:lidar      # USGS 3DEP EPT → canopy inventory; requires PDAL
+npm run data:traffic    # current OSM drivable ways → compact cinematic routes
+npm run data:rooftops   # cached Overture footprints → rooftop proxy geometry
 npm run data:realism    # both in dependency order
 ```
 

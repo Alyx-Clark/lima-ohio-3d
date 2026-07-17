@@ -94,6 +94,12 @@ html[data-theme="night"] .atmosphere {
     radial-gradient(circle at 50% 40%, transparent 35%, rgba(1, 8, 11, 0.3) 100%);
 }
 
+.cinematic-active .atmosphere {
+  box-shadow:
+    inset 0 5vh 7vh -5vh rgba(0, 0, 0, 0.82),
+    inset 0 -6vh 8vh -5vh rgba(0, 0, 0, 0.88);
+}
+
 .masthead {
   position: fixed;
   top: max(24px, env(safe-area-inset-top));
@@ -361,6 +367,78 @@ html[data-theme="night"] .atmosphere {
   font-size: 12px;
 }
 
+.cinematic-button {
+  display: grid;
+  grid-template-columns: 25px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  margin-top: 9px;
+  padding: 10px 9px;
+  border: 1px solid rgba(223, 189, 104, 0.28);
+  border-radius: 4px;
+  background: linear-gradient(100deg, rgba(223, 189, 104, 0.13), rgba(90, 116, 103, 0.06));
+  color: #e8eee9;
+  text-align: left;
+  cursor: pointer;
+  transition: 180ms ease;
+}
+
+.cinematic-button:hover,
+.cinematic-button.is-active {
+  border-color: rgba(223, 189, 104, 0.58);
+  background: linear-gradient(100deg, rgba(223, 189, 104, 0.24), rgba(90, 116, 103, 0.08));
+}
+
+.cinematic-button > i {
+  display: grid;
+  width: 23px;
+  height: 23px;
+  place-items: center;
+  border: 1px solid rgba(223, 189, 104, 0.58);
+  border-radius: 50%;
+}
+
+.cinematic-button > i span {
+  width: 0;
+  height: 0;
+  margin-left: 2px;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 6px solid var(--accent);
+}
+
+.cinematic-button.is-active > i span {
+  width: 6px;
+  height: 7px;
+  margin: 0;
+  border: 0;
+  background: var(--accent);
+}
+
+.cinematic-button strong,
+.cinematic-button small {
+  display: block;
+}
+
+.cinematic-button strong {
+  font-size: 9px;
+  letter-spacing: 0.11em;
+}
+
+.cinematic-button small {
+  margin-top: 3px;
+  color: #788a82;
+  font-size: 7px;
+  letter-spacing: 0.08em;
+}
+
+.cinematic-button b {
+  color: var(--accent);
+  font-size: 7px;
+  letter-spacing: 0.12em;
+}
+
 .toggle-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -440,6 +518,12 @@ input:checked + .switch::after {
   background: linear-gradient(135deg, #6d8455 0 48%, #a59a78 48% 100%);
 }
 .legend-swatch--furniture { background: #c08f47; border-radius: 50%; }
+.legend-swatch--traffic {
+  width: 7px;
+  height: 4px;
+  border-radius: 1px;
+  background: linear-gradient(90deg, #b94138 0 48%, #d7d9d4 48% 100%);
+}
 
 .visual-section {
   padding-bottom: 17px;

@@ -1,0 +1,15 @@
+{
+  "city": "Lima, Ohio",
+  "generatedAt": "2026-07-17T02:55:29.801Z",
+  "source": "Derived from Overture building footprints and heights",
+  "license": "ODbL 1.0; source attributions documented in DATA_LICENSE.md",
+  "counts": {
+    "features": 4137,
+    "hvac": 2962,
+    "vent": 314,
+    "chimney": 452,
+    "skylight": 194,
+    "solar": 215
+  },
+  "note": "Equipment locations are deterministic visual proxies placed within source building footprints; they are not surveyed roof inventories."
+}

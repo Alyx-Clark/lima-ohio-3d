@@ -38,6 +38,14 @@ The application displays Overture attribution persistently. Valid source-provide
 
 The derived objects are height-normalized, de-duplicated canopy-apex visualizations. They are not surveyed trees, species observations, or a current inventory.
 
+## Cinematic traffic routes
+
+`public/data/lima-traffic.json` and its compressed counterpart are derived from drivable OpenStreetMap ways fetched through Overpass. The route geometry remains ODbL-licensed OpenStreetMap data. Vehicle models, colors, spacing, direction, and animated positions are deterministic visual simulations; they do not represent live traffic, vehicle ownership, or observed road conditions.
+
+## Procedural rooftop details
+
+`public/data/lima-rooftops.json` and its compressed counterpart are deterministic derivatives of the Overture building footprints and heights described above. Equipment rectangles are validated inside source footprints and classified for visualization, but their exact positions and types are not surveyed roof inventories.
+
 ## Esri World Imagery
 
 The aerial surface is requested at runtime from Esri World Imagery. No Esri raster tile is stored or redistributed in this repository. Esri and its contributing imagery providers retain their applicable rights and attribution requirements:
@@ -49,6 +57,6 @@ The aerial surface is requested at runtime from Esri World Imagery. No Esri rast
 
 Optional terrain uses the public Mapzen/AWS terrain tile archive. Terrain is disabled by default and is not included in the committed dataset.
 
-## Legacy inferred vegetation fallback
+## Native inferred vegetation fallback
 
-The OSM detail snapshot retains deterministic park-canopy proxies as a compatibility fallback when the LiDAR asset or native extrusion manager cannot load. The production renderer hides this fallback after the LiDAR layer initializes. These proxies are derivative visual features based on mapped land-use geometry, not observed or surveyed individual trees.
+The OSM detail snapshot retains deterministic park-canopy proxies as a compatibility fallback when the LiDAR asset or instanced scene cannot load. The production renderer hides this fallback after the cinematic scene initializes. These proxies are derivative visual features based on mapped land-use geometry, not observed or surveyed individual trees.

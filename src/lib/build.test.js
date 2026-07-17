@@ -5,7 +5,7 @@ import { readFile } from "node:fs/promises";
 const config = await readFile(new URL("../../vite.config.js", import.meta.url), "utf8");
 const html = await readFile(new URL("../../index.html", import.meta.url), "utf8");
 const application = await readFile(new URL("../main.js", import.meta.url), "utf8");
-const treeRenderer = await readFile(new URL("tree-layer.js", import.meta.url), "utf8");
+const cinematicRenderer = await readFile(new URL("traffic-layer.js", import.meta.url), "utf8");
 const packageManifest = await readFile(new URL("../../package.json", import.meta.url), "utf8");
 
 test("production assets target the canonical Nginx subpath", () => {
@@ -21,18 +21,20 @@ test("PMTiles ranges bypass partial browser cache entries", () => {
   assert.match(application, /archiveSource\.mustReload\s*=\s*true/);
 });
 
-test("LiDAR canopy uses native bounded extrusions without a second WebGL renderer", () => {
-  assert.match(treeRenderer, /type:\s*["']fill-extrusion["']/);
-  assert.match(treeRenderer, /cameraBatchLimit/);
-  assert.match(treeRenderer, /scheduleUpdate/);
-  assert.doesNotMatch(packageManifest, /["']three["']/);
+test("cinematic traffic uses a pinned instanced renderer", () => {
+  assert.match(packageManifest, /"three":\s*"\^0\.185\.1"/);
+  assert.match(application, /createCinematicLayer/);
+  assert.match(cinematicRenderer, /InstancedMesh/);
+  assert.match(cinematicRenderer, /IcosahedronGeometry/);
+  assert.match(cinematicRenderer, /RoundedBoxGeometry/);
 });
 
-test("close-range realism stays native and data-driven", () => {
+test("close-range realism stays bounded and data-driven", () => {
   assert.match(application, /facadePatternExpression/);
   assert.match(application, /roofPatternExpression/);
   assert.match(application, /map\.setSky/);
   assert.match(application, /HIGH_PITCH_CULLED_LABELS/);
-  assert.match(treeRenderer, /"middle"/);
-  assert.match(treeRenderer, /setReduced/);
+  assert.match(cinematicRenderer, /treeCandidates/);
+  assert.match(cinematicRenderer, /setReduced/);
+  assert.match(application, /button\.querySelector\("small"\)\.textContent/);
 });

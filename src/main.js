@@ -73,6 +73,14 @@ const PRESETS = {
   },
 };
 
+const CINEMATIC_SHOTS = [
+  { center: [-84.1069, 40.7408], zoom: 16.1, pitch: 72, bearing: -42, duration: 6_600 },
+  { center: [-84.1036, 40.7396], zoom: 17.35, pitch: 79, bearing: 22, duration: 7_200 },
+  { center: [-84.1141, 40.7407], zoom: 17.1, pitch: 73, bearing: 67, duration: 6_400 },
+  { center: [-84.0964, 40.7491], zoom: 16.45, pitch: 67, bearing: 151, duration: 7_000 },
+  { center: [-84.1565, 40.7613], zoom: 16.15, pitch: 70, bearing: -58, duration: 7_200 },
+];
+
 const LIGHT_MODES = {
   day: {
     background: "#e7e1d7",
@@ -108,6 +116,8 @@ const GROUP_LAYERS = {
     "lima-buildings-urban",
     "lima-buildings-industrial",
     "lima-building-roofs",
+    "lima-building-cornices",
+    "lima-rooftop-detail",
   ],
   trees: ["lima-tree-trunks", "lima-tree-crowns-mapped", "lima-tree-crowns-inferred"],
   pedestrian: ["lima-green-space", "lima-path-casing", "lima-pedestrian", "lima-steps", "lima-hedges"],
@@ -137,6 +147,9 @@ let lidarTreeLayer;
 let activeLightMode = "day";
 let labelsVisible = true;
 let highPitchLabelsCulled = false;
+let trafficLayer;
+let cinematicTourActive = false;
+let cinematicTourTimer;
 
 const pmtilesProtocol = maplibregl ? new Protocol() : null;
 if (pmtilesProtocol) maplibregl.addProtocol("pmtiles", pmtilesProtocol.tile);
@@ -172,6 +185,8 @@ async function loadCompressedJson(name) {
 
 const loadDetailData = () => loadCompressedJson("lima-detail");
 const loadTreeData = () => loadCompressedJson("lima-trees");
+const loadTrafficData = () => loadCompressedJson("lima-traffic");
+const loadRooftopData = () => loadCompressedJson("lima-rooftops");
 function safePaint(map, layerId, property, value) {
   if (!map.getLayer(layerId)) return;
   try {
@@ -281,23 +296,45 @@ function createFacadePattern(facadeType, mode, variant) {
     context.globalAlpha = 1;
   }
 
-  context.fillStyle = palette[1];
-  context.fillRect(9, 17, 30, 30);
-  context.fillRect(57, 17, 30, 30);
-  context.fillRect(9, 63, 30, 24);
-  context.fillRect(57, 63, 30, 24);
-  context.fillStyle = palette[2];
-  context.fillRect(12, 20, 24, 24);
-  context.fillRect(60, 20, 24, 24);
-  context.fillRect(12, 66, 24, 18);
-  if (mode === "night") context.fillRect(60, 66, 24, 18);
-  context.strokeStyle = palette[3];
-  context.globalAlpha = 0.48;
-  for (const x of [24, 72]) {
+  const windows = [
+    [9, 17, 30, 30],
+    [57, 17, 30, 30],
+    [9, 63, 30, 24],
+    [57, 63, 30, 24],
+  ];
+  windows.forEach(([x, y, width, height], windowIndex) => {
+    context.fillStyle = palette[1];
+    context.fillRect(x, y, width, height);
+    const inset = 3;
+    const lit = mode === "night" && (windowIndex + variant * 2) % 4 !== 1;
+    const glass = context.createLinearGradient(x + inset, y + inset, x + width - inset, y + height - inset);
+    if (lit) {
+      glass.addColorStop(0, "#7c6238");
+      glass.addColorStop(0.45, "#e1b863");
+      glass.addColorStop(1, "#765f3a");
+    } else {
+      glass.addColorStop(0, palette[2]);
+      glass.addColorStop(0.5, mode === "night" ? "#17272b" : "#70858a");
+      glass.addColorStop(1, palette[2]);
+    }
+    context.fillStyle = glass;
+    context.fillRect(x + inset, y + inset, width - inset * 2, height - inset * 2);
+    context.strokeStyle = mode === "night" ? "rgba(15,23,24,0.78)" : "rgba(235,239,231,0.55)";
+    context.lineWidth = 1;
     context.beginPath();
-    context.moveTo(x, 18);
-    context.lineTo(x, 87);
+    context.moveTo(x + width / 2, y + inset);
+    context.lineTo(x + width / 2, y + height - inset);
+    context.moveTo(x + inset, y + height / 2);
+    context.lineTo(x + width - inset, y + height / 2);
     context.stroke();
+    context.fillStyle = mode === "night" ? "rgba(3,9,10,0.65)" : "rgba(46,51,49,0.32)";
+    context.fillRect(x - 1, y + height, width + 2, 2);
+  });
+  if (facadeType === "residential") {
+    context.fillStyle = mode === "night" ? "#1b2423" : "#63584b";
+    context.fillRect(42, 66, 12, 30);
+    context.fillStyle = mode === "night" ? "#d8b66b" : "#bfc6be";
+    context.fillRect(50, 80, 2, 2);
   }
   context.globalAlpha = 1;
   return context.getImageData(0, 0, 96, 96);
@@ -349,6 +386,18 @@ function createRoofPattern(mode, variant) {
     }
   }
 
+  context.fillStyle = mode === "night" ? "rgba(155,172,169,0.1)" : "rgba(241,235,219,0.15)";
+  for (let index = 0; index < 42; index += 1) {
+    const x = (index * 37 + variant * 13) % 64;
+    const y = (index * 23 + variant * 19) % 64;
+    const size = index % 5 === 0 ? 2 : 1;
+    context.fillRect(x, y, size, size);
+  }
+  context.fillStyle = mode === "night" ? "rgba(3,10,11,0.14)" : "rgba(49,45,40,0.11)";
+  for (let index = 0; index < 16; index += 1) {
+    context.fillRect((index * 29 + variant * 7) % 64, (index * 17 + variant * 5) % 64, 2, 1);
+  }
+
   if (variant === 3) {
     context.fillStyle = mode === "night" ? "#1d292b" : "#51636a";
     context.fillRect(10, 12, 15, 10);
@@ -375,6 +424,29 @@ function roofPatternExpression(mode) {
     ["get", "material_variant"],
     ...MATERIAL_VARIANTS.flatMap((variant) => [variant, `roof-${mode}-${variant}`]),
     `roof-${mode}-0`,
+  ];
+}
+
+function rooftopColorExpression(mode) {
+  const palette = {
+    day: ["#9ca5a3", "#c2c9c6", "#7d5545", "#294856", "#1f3a52", "#8f9794"],
+    golden: ["#9d9990", "#c7beb0", "#80523d", "#344851", "#29435b", "#908a80"],
+    night: ["#3b4748", "#536063", "#3e2d28", "#13262f", "#10243a", "#384345"],
+  }[mode];
+  return [
+    "match",
+    ["get", "kind"],
+    "hvac",
+    palette[0],
+    "vent",
+    palette[1],
+    "chimney",
+    palette[2],
+    "skylight",
+    palette[3],
+    "solar",
+    palette[4],
+    palette[5],
   ];
 }
 
@@ -487,6 +559,32 @@ function addMeasuredBuildings(map, beforeLabels) {
     beforeLabels,
   );
 
+  map.addLayer(
+    {
+      id: "lima-building-cornices",
+      type: "fill-extrusion",
+      source: "lima-buildings",
+      "source-layer": "buildings",
+      minzoom: 15.35,
+      paint: {
+        "fill-extrusion-color": [
+          "match",
+          ["get", "facade_type"],
+          "urban",
+          "#b99b80",
+          "industrial",
+          "#aeb3ae",
+          "#d4c9b4",
+        ],
+        "fill-extrusion-base": ["get", "height"],
+        "fill-extrusion-height": ["+", ["get", "height"], 0.22],
+        "fill-extrusion-opacity": 0.96,
+        "fill-extrusion-vertical-gradient": true,
+      },
+    },
+    beforeLabels,
+  );
+
   if (map.getLayer("building-3d")) map.setLayerZoomRange("building-3d", 0, 13.25);
   if (map.getLayer("building")) map.setLayerZoomRange("building", 0, 13.25);
 }
@@ -498,7 +596,7 @@ function styleMeasuredBuildings(map, mode) {
   safePaint(map, "lima-building-roofs", "fill-extrusion-pattern", roofPatternExpression(mode));
 }
 
-function addLimaLayers(map, detailData) {
+function addLimaLayers(map, detailData, rooftopData) {
   const beforeBuildings = layerAnchor(map, "building-3d");
   const beforeLabels = layerAnchor(map);
 
@@ -514,6 +612,28 @@ function addLimaLayers(map, detailData) {
     data: detailData,
     generateId: false,
   });
+  map.addSource("lima-rooftops", {
+    type: "geojson",
+    data: rooftopData,
+    generateId: false,
+  });
+
+  map.addLayer(
+    {
+      id: "lima-rooftop-detail",
+      type: "fill-extrusion",
+      source: "lima-rooftops",
+      minzoom: 15.45,
+      paint: {
+        "fill-extrusion-color": rooftopColorExpression("day"),
+        "fill-extrusion-base": ["get", "base"],
+        "fill-extrusion-height": ["get", "height"],
+        "fill-extrusion-opacity": 0.98,
+        "fill-extrusion-vertical-gradient": true,
+      },
+    },
+    beforeLabels,
+  );
 
   map.addLayer(
     {
@@ -881,6 +1001,17 @@ function styleBaseMap(map, mode = "day") {
   safePaint(map, "building-3d", "fill-extrusion-opacity", 0.91);
   safePaint(map, "building-3d", "fill-extrusion-vertical-gradient", true);
   styleMeasuredBuildings(map, mode);
+  safePaint(map, "lima-rooftop-detail", "fill-extrusion-color", rooftopColorExpression(mode));
+  safePaint(
+    map,
+    "lima-building-cornices",
+    "fill-extrusion-color",
+    mode === "night"
+      ? "#454a47"
+      : mode === "golden"
+        ? "#b79272"
+        : "#c9c2b5",
+  );
 
   const aerialLight = {
     day: { min: 0.08, max: 0.94, saturation: -0.08, contrast: 0.08 },
@@ -926,6 +1057,7 @@ function setLighting(map, mode) {
   });
   if (loaded) styleBaseMap(map, mode);
   lidarTreeLayer?.setTheme(mode);
+  trafficLayer?.setTheme(mode);
 }
 
 function setLayerGroup(map, group, visible) {
@@ -949,6 +1081,10 @@ function setLayerGroup(map, group, visible) {
   }
 
   if (group === "trees") lidarTreeLayer?.setVisible(visible);
+  if (group === "traffic") {
+    trafficLayer?.setVisible(visible);
+    return;
+  }
 
   if (group === "labels") {
     labelsVisible = visible;
@@ -1009,6 +1145,49 @@ function flyToPreset(map, name, announce = true) {
   if (announce) showToast(`Flying to ${buttons[activeIndex]?.querySelector("strong")?.textContent || name}`);
 }
 
+function updateCinematicButton() {
+  const button = document.querySelector("#cinematic-tour");
+  if (!button) return;
+  button.classList.toggle("is-active", cinematicTourActive);
+  button.setAttribute("aria-pressed", String(cinematicTourActive));
+  button.querySelector("strong").textContent = cinematicTourActive ? "END TOUR" : "CINEMATIC TOUR";
+  button.querySelector("small").textContent = cinematicTourActive ? "RETURN TO MANUAL FLIGHT" : "DIRECTOR-CURATED FLYTHROUGH";
+}
+
+function stopCinematicTour(map, announce = false) {
+  if (!cinematicTourActive) return;
+  cinematicTourActive = false;
+  window.clearTimeout(cinematicTourTimer);
+  map.stop();
+  document.body.classList.remove("cinematic-active");
+  updateCinematicButton();
+  if (announce) showToast("Cinematic tour ended");
+}
+
+function startCinematicTour(map) {
+  if (prefersReducedMotion.matches) {
+    showToast("Cinematic motion is disabled by your reduced-motion preference", 4_500);
+    return;
+  }
+  cinematicTourActive = true;
+  document.body.classList.add("cinematic-active");
+  updateCinematicButton();
+  setLighting(map, "golden");
+  let shotIndex = 0;
+  const playShot = () => {
+    if (!cinematicTourActive) return;
+    const shot = CINEMATIC_SHOTS[shotIndex % CINEMATIC_SHOTS.length];
+    map.flyTo({ ...shot, curve: 1.08, speed: 0.34, essential: false });
+    elements.renderStatus.textContent = "CINEMATIC";
+    cinematicTourTimer = window.setTimeout(() => {
+      shotIndex += 1;
+      playShot();
+    }, shot.duration + 900);
+  };
+  showToast("Cinematic tour · move or press a flight key to take control", 5_000);
+  playShot();
+}
+
 function attachFlightControls(map) {
   const held = new Set();
   const controlKeys = new Set([
@@ -1035,6 +1214,7 @@ function attachFlightControls(map) {
     if (tagName === "INPUT" || tagName === "BUTTON" || tagName === "A") return;
     if (!controlKeys.has(event.code)) return;
     event.preventDefault();
+    stopCinematicTour(map);
     held.add(event.code);
     elements.renderStatus.textContent = "MANUAL FLIGHT";
   });
@@ -1115,8 +1295,17 @@ function attachPopupInteractions(map) {
 
 function attachUi(map) {
   document.querySelectorAll("[data-preset]").forEach((button) => {
-    button.addEventListener("click", () => flyToPreset(map, button.dataset.preset));
+    button.addEventListener("click", () => {
+      stopCinematicTour(map);
+      flyToPreset(map, button.dataset.preset);
+    });
   });
+
+  document.querySelector("#cinematic-tour").addEventListener("click", () => {
+    if (cinematicTourActive) stopCinematicTour(map, true);
+    else startCinematicTour(map);
+  });
+  map.getCanvas().addEventListener("pointerdown", () => stopCinematicTour(map));
 
   document.querySelectorAll("[data-layer-toggle]").forEach((input) => {
     input.addEventListener("change", () => setLayerGroup(map, input.dataset.layerToggle, input.checked));
@@ -1127,8 +1316,10 @@ function attachUi(map) {
   });
 
   document.querySelector("#reset-scene").addEventListener("click", () => {
+    stopCinematicTour(map);
     inferredTreesAutoHidden = false;
     lidarTreeLayer?.setReduced(false);
+    trafficLayer?.setReduced(false);
     document.querySelectorAll("[data-layer-toggle]").forEach((input) => {
       input.checked = input.dataset.layerToggle !== "terrain";
       setLayerGroup(map, input.dataset.layerToggle, input.checked);
@@ -1170,8 +1361,9 @@ function attachPerformanceReadout(map) {
         inferredTreesAutoHidden = true;
         safeLayout(map, "lima-tree-crowns-inferred", "visibility", "none");
         lidarTreeLayer?.setReduced(true);
+        trafficLayer?.setReduced(true);
         elements.renderStatus.textContent = "ADAPTIVE";
-        showToast("Adaptive detail reduced distant tree geometry to keep flight smooth", 4_800);
+        showToast("Adaptive detail reduced distant canopy and traffic to keep flight smooth", 4_800);
       }
     }
     window.requestAnimationFrame(measureFrame);
@@ -1235,18 +1427,27 @@ function initializeMap() {
       .map((layer) => layer.id);
     styleBaseMap(map, "day");
     try {
-      const treeLoad = Promise.all([loadTreeData(), import("./lib/tree-layer.js")]).catch((error) => {
-        console.warn("Measured tree inventory unavailable; retaining fallback canopy", error);
+      const cinematicLoad = Promise.all([loadTreeData(), loadTrafficData(), import("./lib/traffic-layer.js")]).catch((error) => {
+        console.warn("Cinematic traffic and canopy unavailable; retaining native fallback", error);
         return null;
       });
-      const detailData = await loadDetailData();
-      addLimaLayers(map, detailData);
-      const treeResources = await treeLoad;
-      if (treeResources) {
-        const [treeData, { createTreeLayer }] = treeResources;
-        lidarTreeLayer = createTreeLayer(treeData.trees);
-        lidarTreeLayer.setTheme(activeLightMode);
-        lidarTreeLayer.addTo(map, layerAnchor(map));
+      const [detailData, rooftopData] = await Promise.all([loadDetailData(), loadRooftopData()]);
+      addLimaLayers(map, detailData, rooftopData);
+      const cinematicResources = await cinematicLoad;
+      if (cinematicResources) {
+        const [treeData, trafficData, { createCinematicLayer }] = cinematicResources;
+        trafficLayer = createCinematicLayer(trafficData, treeData.trees);
+        trafficLayer.addTo(map, layerAnchor(map));
+        trafficLayer.setTheme(activeLightMode);
+        lidarTreeLayer = {
+          setTheme() {},
+          setVisible(visible) {
+            trafficLayer.setTreeVisible(visible);
+          },
+          setReduced(reduced) {
+            trafficLayer.setReduced(reduced);
+          },
+        };
         for (const id of ["lima-tree-trunks", "lima-tree-crowns-mapped", "lima-tree-crowns-inferred"]) {
           safeLayout(map, id, "visibility", "none");
         }
@@ -1298,18 +1499,29 @@ Promise.all([
   fetchJson(`${DATA_BASE}lima-metadata.json`),
   fetchJson(`${DATA_BASE}lima-buildings-metadata.json`),
   fetchJson(`${DATA_BASE}lima-trees-metadata.json`),
+  fetchJson(`${DATA_BASE}lima-traffic-metadata.json`),
+  fetchJson(`${DATA_BASE}lima-rooftops-metadata.json`),
 ])
-  .then(([detailMetadata, buildingMetadata, treeMetadata]) => {
+  .then(([detailMetadata, buildingMetadata, treeMetadata, trafficMetadata, rooftopMetadata]) => {
     const detailCounts = detailMetadata.counts;
     const buildingCounts = buildingMetadata.counts;
     const treeCounts = treeMetadata.counts;
     const strong = document.createElement("strong");
     strong.textContent = treeCounts.lidarTreeCrowns.toLocaleString();
     elements.sourceSummary.replaceChildren(strong, " LiDAR canopy objects");
+    const trafficSummary = document.querySelector("#traffic-summary");
+    trafficSummary.replaceChildren(
+      Object.assign(document.createElement("strong"), {
+        textContent: trafficMetadata.counts.routes.toLocaleString(),
+      }),
+      " drivable route segments",
+    );
     elements.renderStatus.title = [
       `${buildingCounts.source_heights.toLocaleString()} source building heights`,
       `${treeCounts.lidarTreeCrowns.toLocaleString()} LiDAR canopy objects`,
       `${detailCounts.pedestrianWays.toLocaleString()} pedestrian ways`,
+      `${trafficMetadata.counts.routes.toLocaleString()} traffic routes`,
+      `${rooftopMetadata.counts.features.toLocaleString()} rooftop details`,
     ].join(" · ");
   })
   .catch((error) => console.debug(error));
