@@ -1,9 +1,11 @@
 # Lima 3D City Explorer
 
-A range-streamed, GPU-accelerated reconstruction of Lima, Ohio. It combines physical building heights, an aerial ground surface, LiDAR-derived canopy, OpenStreetMap street detail, and free-flight camera controls in a static web application.
+A flyable 3D experience of Lima, Ohio with two reality engines: licensed Google Photorealistic 3D and Street View when a Maps Platform key is configured, plus a range-streamed open-data reconstruction with physical building heights, aerial ground imagery, LiDAR-derived canopy, and OpenStreetMap street detail.
 
 ## What is rendered
 
+- Google Maps Platform Photorealistic 3D in hybrid mode, streamed directly from Google when runtime configuration is present
+- An official interactive Google Street View panel targeted to Old City Prime at 215 S Main Street
 - Every street available in the OpenFreeMap/OpenStreetMap vector tiles
 - 24,718 Overture building footprints; 24,179 carry source-provided height attributes and 539 use conservative class-based fallbacks
 - Eight deterministic facade and roof material variants per building class, generated at runtime without texture downloads
@@ -18,7 +20,7 @@ A range-streamed, GPU-accelerated reconstruction of Lima, Ohio. It combines phys
 - The official OpenStreetMap municipal boundary for Lima
 - Optional 3D terrain from public Mapzen/AWS Terrarium elevation tiles
 
-This is an open-data reconstruction, not a live camera feed, Google Street View replacement, or engineering survey. The LiDAR was acquired between November 2019 and April 2020; the aerial imagery is served at runtime and its capture dates vary by source. LiDAR canopy objects represent detected crown apexes, not a certified tree inventory. Rooftop equipment, vehicle positions, facade opening layouts, and untagged exterior materials are deterministic visual simulations rather than observations. Building geometry, map completeness, and imagery freshness vary by source.
+Google Reality and Street View are licensed runtime viewers, not copied application assets. Google content is never committed, cached, or baked into the open-data meshes. The fallback reconstruction is not a live camera feed or engineering survey. Its LiDAR was acquired between November 2019 and April 2020; aerial capture dates vary by source. LiDAR canopy objects represent detected crown apexes, not a certified tree inventory. Rooftop equipment, vehicle positions, facade opening layouts, and untagged exterior materials are deterministic visual simulations rather than observations. Building geometry, map completeness, and imagery freshness vary by source.
 
 The build retains valid Overture heights. Source values below 2.2 meters are treated as implausible building measurements, labeled `normalized`, and replaced with class-aware defaults; records without any height remain labeled `inferred`.
 
@@ -32,13 +34,15 @@ The build retains valid Overture heights. Source values below 2.2 meters are tre
 - `T` / `G`: tilt up and down
 - `Shift`: boost flight speed
 
-The control deck includes six camera presets, an interruptible director-curated cinematic tour, independent traffic and scene-detail toggles, daylight/golden/night lighting, fullscreen, compass, pitch, and zoom controls.
+The control deck includes seven camera presets, an Old City Prime landmark target, an interruptible cinematic tour, independent traffic and scene-detail toggles, daylight/golden/night lighting, fullscreen, compass, pitch, and zoom controls. The reality switch changes between Google 3D and the optimized open reconstruction.
 
 ## Architecture
 
 The application is deliberately static and framework-light:
 
 - Vite builds plain HTML, CSS, and JavaScript.
+- Google Maps JavaScript API libraries are loaded on demand only after a valid runtime key is present. `Map3DElement` supplies hybrid photorealistic 3D, while `StreetViewPanorama` supplies ground-level imagery with Google attribution and controls intact.
+- Google and open-data renderers occupy the same viewport but only the selected engine is visible. The open renderer remains initialized as a resilient fallback; it does not continuously animate while Google Reality is active.
 - A pinned, integrity-checked MapLibre GL JS CDN build performs WebGL vector, raster, and 3D building rendering.
 - A deferred, pinned Three.js scene shares MapLibre's WebGL context for close-range canopy, traffic, and street-facing architecture. Rounded vehicles, organic tree crowns, and facade components are GPU-instanced rather than emitted as thousands of independent scene objects.
 - Overture buildings are compiled into a same-origin PMTiles archive so the browser requests only the vector-tile ranges in view. Range reads are revalidated to avoid stale or incomplete partial-cache entries after a reload.
@@ -56,7 +60,7 @@ The application is deliberately static and framework-light:
 - An adaptive safeguard reduces camera-adjacent canopy and traffic batches after sustained low framerate; the complete source inventories remain available as the camera moves.
 - Material-only wall patterns replace the old repeated four-window texture. Actual close-range openings are generated from each wall's length, height, class, road orientation, and deterministic seed, so neighboring buildings no longer share an identical facade grid.
 
-No backend, database, container, daemon, or client API key is required. The production files are served directly by Nginx.
+No backend, database, container, or daemon is required. The production files are served directly by Nginx. Open reconstruction works without credentials; Google Reality requires a browser API key restricted to the production origin.
 
 ## Local development
 
@@ -68,6 +72,28 @@ npm run dev
 ```
 
 Then open the URL printed by Vite.
+
+## Google Reality configuration
+
+Enable the Maps JavaScript API, Maps 3D, and Street View for a Google Cloud project with billing. Create a browser key restricted to `https://owlex.dev/*` and restrict the key to the required Maps APIs. Do not use an unrestricted key.
+
+For a local one-off build:
+
+```bash
+VITE_GOOGLE_MAPS_API_KEY='your-domain-restricted-key' npm run build
+```
+
+For production, keep the key out of Git and replace `dist/runtime-config.json` during deployment:
+
+```json
+{
+  "googleMapsApiKey": "your-domain-restricted-key",
+  "googleMapId": "",
+  "defaultRealityMode": "google"
+}
+```
+
+The key is necessarily visible to browsers; HTTP-referrer and API restrictions are the security boundary. With no configured key, Google buttons remain visible but clearly report `KEY NEEDED`, and the open-data experience continues without console errors.
 
 ## Verification
 
@@ -115,6 +141,8 @@ npm run check
 
 Publish the contents of `dist/` at `/lima-3d`. The production build intentionally emits absolute `/lima-3d/` asset and data URLs because the documented Nginx configuration canonicalizes `/lima-3d/` to `/lima-3d`.
 
+After copying `dist/`, inject the restricted key into `/var/www/html/lima-3d/runtime-config.json` from a server-side credential file outside the web root. The served key is public by design, but the source credential file should remain owner-readable and must not be committed or recorded in Notion.
+
 The public release target is [https://owlex.dev/lima-3d](https://owlex.dev/lima-3d); GitHub remains the canonical source repository.
 
 For the documented Nginx server, deployment requires only a versioned copy of `dist/` into `/var/www/html/lima-3d`, followed by route verification. It does not require a new port, daemon, database, DNS record, TLS certificate, or Nginx behavior change. Keep the previous directory as the rollback target until the new route is verified.
@@ -125,6 +153,7 @@ For the documented Nginx server, deployment requires only a versioned copy of `d
 - Vector tiles and style by [OpenFreeMap](https://openfreemap.org/).
 - Building footprints and height attributes from [Overture Maps Foundation](https://overturemaps.org/), available under the ODbL.
 - Aerial ground imagery © Esri and its source providers; imagery is requested at runtime and is not redistributed in this repository.
+- Google Photorealistic 3D and Street View content © Google and its named data providers; content is requested through Google Maps Platform at runtime and is not redistributed in this repository.
 - Canopy geometry derived from adjacent USGS 3DEP QL1 work units `OH_Statewide_Phase1_2_2019` and `OH_Statewide_Phase1_5_2019`.
 - Terrain tiles originate from the public Mapzen terrain tile archive hosted on AWS.
 - Application source is released under the MIT License.

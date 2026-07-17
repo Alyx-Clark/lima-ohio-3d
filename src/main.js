@@ -8,6 +8,10 @@ import {
   moveCenter,
   normalizeBearing,
 } from "./lib/flight.js";
+import {
+  createGoogleRealityController,
+  loadGoogleMapsConfig,
+} from "./lib/google-reality.js";
 
 const { maplibregl } = window;
 
@@ -42,6 +46,13 @@ const PRESETS = {
     pitch: 68,
     bearing: -31,
     duration: 2_400,
+  },
+  oldcity: {
+    center: [-84.10486, 40.73852],
+    zoom: 18.35,
+    pitch: 76,
+    bearing: -86,
+    duration: 2_300,
   },
   museum: {
     center: [-84.1138168, 40.7406108],
@@ -137,6 +148,17 @@ const elements = {
   presetIndex: document.querySelector("#preset-index"),
   sourceSummary: document.querySelector("#source-summary"),
   toast: document.querySelector("#toast"),
+  map: document.querySelector("#map"),
+  googleReality: document.querySelector("#google-reality"),
+  googleMode: document.querySelector('[data-reality-mode="google"]'),
+  openMode: document.querySelector('[data-reality-mode="open"]'),
+  googleModeStatus: document.querySelector("#google-mode-status"),
+  streetViewShell: document.querySelector("#street-view-shell"),
+  streetViewMap: document.querySelector("#street-view-map"),
+  streetViewStatus: document.querySelector("#street-view-status"),
+  openStreetView: document.querySelector("#open-street-view"),
+  closeStreetView: document.querySelector("#close-street-view"),
+  openAttribution: document.querySelector("#open-attribution"),
 };
 
 let labelLayerIds = [];
@@ -152,6 +174,10 @@ let buildingsVisible = true;
 let facadesVisible = true;
 let cinematicTourActive = false;
 let cinematicTourTimer;
+let activeRealityMode = "open";
+let googleRealityController;
+let googleRealityConfig;
+let googleRealityInitialization;
 
 const pmtilesProtocol = maplibregl ? new Protocol() : null;
 if (pmtilesProtocol) maplibregl.addProtocol("pmtiles", pmtilesProtocol.tile);
@@ -1174,6 +1200,116 @@ function updateCameraReadout(map) {
   )}°`;
 }
 
+function updateGoogleCameraReadout(camera) {
+  const latitude = camera.center.lat;
+  const longitude = camera.center.lng;
+  elements.coordinates.textContent = `${Math.abs(latitude).toFixed(4)}° ${latitude >= 0 ? "N" : "S"} · ${Math.abs(
+    longitude,
+  ).toFixed(4)}° ${longitude >= 0 ? "E" : "W"}`;
+  elements.attitude.textContent = `R ${Math.round(camera.range)} m · P ${Math.round(camera.tilt)}° · B ${Math.round(
+    normalizeBearing(camera.heading),
+  )}°`;
+}
+
+function updateRealityButtons(mode) {
+  document.querySelectorAll("[data-reality-mode]").forEach((button) => {
+    const active = button.dataset.realityMode === mode;
+    button.classList.toggle("is-active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
+}
+
+function configureGoogleRealityController() {
+  if (googleRealityController) return googleRealityController;
+  googleRealityController = createGoogleRealityController({
+    mapContainer: elements.googleReality,
+    streetContainer: elements.streetViewMap,
+    onStatus(status) {
+      if (activeRealityMode === "google") elements.renderStatus.textContent = status;
+    },
+    onCamera: updateGoogleCameraReadout,
+    onStreetStatus(status) {
+      elements.streetViewStatus.textContent = status === "OK" ? "LIVE" : status;
+    },
+  });
+  return googleRealityController;
+}
+
+async function ensureGoogleReality() {
+  if (!googleRealityConfig?.isConfigured) return false;
+  const controller = configureGoogleRealityController();
+  if (controller.initialized) return true;
+  if (!googleRealityInitialization) {
+    googleRealityInitialization = controller.initialize(googleRealityConfig).catch((error) => {
+      googleRealityInitialization = null;
+      throw error;
+    });
+  }
+  await googleRealityInitialization;
+  return true;
+}
+
+async function setRealityMode(map, mode, announce = true) {
+  if (mode === "google") {
+    if (!googleRealityConfig?.isConfigured) {
+      showToast("Google Reality is installed · add the domain-restricted Maps key to runtime-config.json to activate it", 6_000);
+      return false;
+    }
+    try {
+      elements.renderStatus.textContent = "CONNECTING GOOGLE 3D";
+      await ensureGoogleReality();
+    } catch (error) {
+      console.error("Google Reality failed to initialize", error);
+      elements.renderStatus.textContent = "OPEN DATA READY";
+      elements.googleModeStatus.textContent = "RETRY";
+      showToast("Google Reality could not connect · the open-data city remains available", 5_000);
+      return false;
+    }
+  }
+
+  activeRealityMode = mode;
+  document.body.dataset.realityMode = mode;
+  elements.googleReality.hidden = mode !== "google";
+  elements.map.setAttribute("aria-hidden", String(mode === "google"));
+  elements.openAttribution.hidden = mode === "google";
+  updateRealityButtons(mode);
+
+  if (mode === "google") {
+    map.stop();
+    elements.renderStatus.textContent = "GOOGLE REALITY";
+    const activePreset = document.querySelector("[data-preset].is-active")?.dataset.preset || "overview";
+    await googleRealityController.flyTo(activePreset, prefersReducedMotion.matches ? 0 : 1_600);
+    if (announce) showToast("Google Photorealistic 3D · live licensed imagery");
+  } else {
+    googleRealityController?.stopAnimation();
+    googleRealityController?.hideStreetView();
+    elements.streetViewShell.hidden = true;
+    map.resize();
+    updateCameraReadout(map);
+    elements.renderStatus.textContent = loaded ? "OPEN DATA READY" : "STREAMING";
+    if (announce) showToast("Open-data reconstruction · optimized fallback");
+  }
+  return true;
+}
+
+async function initializeRealityMode(map) {
+  googleRealityConfig = await loadGoogleMapsConfig(import.meta.env.BASE_URL);
+  window.__LIMA_3D__.googleConfigured = googleRealityConfig.isConfigured;
+  if (!googleRealityConfig.isConfigured) {
+    elements.googleMode.classList.add("is-unavailable");
+    elements.googleModeStatus.textContent = "KEY NEEDED";
+    elements.openStreetView.classList.add("is-unavailable");
+    elements.openStreetView.setAttribute("aria-disabled", "true");
+    return;
+  }
+
+  elements.googleMode.classList.remove("is-unavailable");
+  elements.googleModeStatus.textContent = "LIVE";
+  elements.openStreetView.classList.remove("is-unavailable");
+  elements.openStreetView.removeAttribute("aria-disabled");
+  if (googleRealityConfig.defaultRealityMode === "google") await setRealityMode(map, "google", false);
+}
+
 function openPanel(open) {
   document.body.classList.toggle("panel-closed", !open);
   elements.panelToggle.setAttribute("aria-expanded", String(open));
@@ -1181,16 +1317,20 @@ function openPanel(open) {
   elements.panel.inert = !open;
 }
 
-function flyToPreset(map, name, announce = true) {
+async function flyToPreset(map, name, announce = true) {
   const preset = PRESETS[name];
   if (!preset) return;
-  map.flyTo({
-    ...preset,
-    duration: prefersReducedMotion.matches ? 0 : preset.duration,
-    essential: false,
-    curve: 1.35,
-    speed: 0.72,
-  });
+  if (activeRealityMode === "google" && googleRealityController?.initialized) {
+    await googleRealityController.flyTo(name, prefersReducedMotion.matches ? 0 : preset.duration);
+  } else {
+    map.flyTo({
+      ...preset,
+      duration: prefersReducedMotion.matches ? 0 : preset.duration,
+      essential: false,
+      curve: 1.35,
+      speed: 0.72,
+    });
+  }
 
   const buttons = [...document.querySelectorAll("[data-preset]")];
   buttons.forEach((button) => button.classList.toggle("is-active", button.dataset.preset === name));
@@ -1214,13 +1354,14 @@ function stopCinematicTour(map, announce = false) {
   if (!cinematicTourActive) return;
   cinematicTourActive = false;
   window.clearTimeout(cinematicTourTimer);
-  map.stop();
+  if (activeRealityMode === "google") googleRealityController?.stopAnimation();
+  else map.stop();
   document.body.classList.remove("cinematic-active");
   updateCinematicButton();
   if (announce) showToast("Cinematic tour ended");
 }
 
-function startCinematicTour(map) {
+async function startCinematicTour(map) {
   if (prefersReducedMotion.matches) {
     showToast("Cinematic motion is disabled by your reduced-motion preference", 4_500);
     return;
@@ -1228,6 +1369,12 @@ function startCinematicTour(map) {
   cinematicTourActive = true;
   document.body.classList.add("cinematic-active");
   updateCinematicButton();
+  if (activeRealityMode === "google") {
+    elements.renderStatus.textContent = "GOOGLE CINEMATIC";
+    showToast("Google cinematic orbit · move or press a flight key to take control", 5_000);
+    await googleRealityController?.startOrbit();
+    return;
+  }
   setLighting(map, "golden");
   let shotIndex = 0;
   const playShot = () => {
@@ -1288,6 +1435,11 @@ function attachFlightControls(map) {
       const climb = Number(held.has("KeyR")) - Number(held.has("KeyF"));
       const tilt = Number(held.has("KeyT")) - Number(held.has("KeyG"));
       const boost = held.has("ShiftLeft") || held.has("ShiftRight");
+      if (activeRealityMode === "google" && googleRealityController?.initialized) {
+        googleRealityController.move({ forward, strafe, yaw, climb, tilt, boost }, deltaSeconds);
+        window.requestAnimationFrame(frame);
+        return;
+      }
       const speed = flightSpeedForZoom(map.getZoom(), boost);
       const center = moveCenter(map.getCenter(), map.getBearing(), forward * speed * deltaSeconds, strafe * speed * deltaSeconds);
 
@@ -1350,6 +1502,10 @@ function attachPopupInteractions(map) {
 }
 
 function attachUi(map) {
+  document.querySelectorAll("[data-reality-mode]").forEach((button) => {
+    button.addEventListener("click", () => setRealityMode(map, button.dataset.realityMode));
+  });
+
   document.querySelectorAll("[data-preset]").forEach((button) => {
     button.addEventListener("click", () => {
       stopCinematicTour(map);
@@ -1362,6 +1518,23 @@ function attachUi(map) {
     else startCinematicTour(map);
   });
   map.getCanvas().addEventListener("pointerdown", () => stopCinematicTour(map));
+  elements.googleReality.addEventListener("pointerdown", () => stopCinematicTour(map));
+
+  elements.openStreetView.addEventListener("click", async () => {
+    const ready = await setRealityMode(map, "google", false);
+    if (!ready) return;
+    stopCinematicTour(map);
+    await flyToPreset(map, "oldcity", false);
+    elements.streetViewShell.hidden = false;
+    document.body.classList.add("street-view-open");
+    googleRealityController.showOldCityPrimeStreetView();
+    showToast("Official Google Street View · Old City Prime · 215 S Main St", 5_000);
+  });
+  elements.closeStreetView.addEventListener("click", () => {
+    googleRealityController?.hideStreetView();
+    elements.streetViewShell.hidden = true;
+    document.body.classList.remove("street-view-open");
+  });
 
   document.querySelectorAll("[data-layer-toggle]").forEach((input) => {
     input.addEventListener("change", () => setLayerGroup(map, input.dataset.layerToggle, input.checked));
@@ -1514,8 +1687,10 @@ function initializeMap() {
         }
       }
       loaded = true;
-      elements.renderStatus.textContent = "READY";
-      updateCameraReadout(map);
+      if (activeRealityMode === "open") {
+        elements.renderStatus.textContent = "OPEN DATA READY";
+        updateCameraReadout(map);
+      }
       attachPopupInteractions(map);
       map.once("idle", dismissLoading);
     } catch (error) {
@@ -1527,18 +1702,22 @@ function initializeMap() {
   });
 
   map.on("movestart", () => {
-    if (loaded) elements.renderStatus.textContent = inferredTreesAutoHidden ? "ADAPTIVE" : "FLYING";
+    if (loaded && activeRealityMode === "open") elements.renderStatus.textContent = inferredTreesAutoHidden ? "ADAPTIVE" : "FLYING";
   });
   map.on("move", () => {
-    updateCameraReadout(map);
+    if (activeRealityMode === "open") updateCameraReadout(map);
     syncLabelVisibility(map);
   });
   map.on("moveend", () => {
-    if (loaded) elements.renderStatus.textContent = inferredTreesAutoHidden ? "ADAPTIVE" : "READY";
+    if (loaded && activeRealityMode === "open") {
+      elements.renderStatus.textContent = inferredTreesAutoHidden ? "ADAPTIVE" : "OPEN DATA READY";
+    }
   });
   map.on("error", (event) => {
-    console.warn("Map resource error", event.error || event);
-    if (!loaded) elements.renderStatus.textContent = "RETRYING";
+    const resourceError = event.error || event;
+    const resourceDetail = resourceError?.message || resourceError?.url || resourceError?.status || "unknown resource failure";
+    console.warn(`Map resource error: ${resourceDetail}`);
+    if (!loaded && activeRealityMode === "open") elements.renderStatus.textContent = "RETRYING";
   });
 
   window.setTimeout(() => {
@@ -1555,6 +1734,14 @@ function initializeMap() {
 }
 
 const map = initializeMap();
+
+window.__LIMA_3D__ = { map, presets: PRESETS, googleConfigured: false };
+if (map) {
+  initializeRealityMode(map).catch((error) => {
+    console.error("Reality mode bootstrap failed", error);
+    elements.googleModeStatus.textContent = "RETRY";
+  });
+}
 
 Promise.all([
   fetchJson(`${DATA_BASE}lima-metadata.json`),
@@ -1597,5 +1784,3 @@ Promise.all([
   .catch((error) => console.debug(error));
 
 if (window.innerWidth < 760) openPanel(false);
-
-window.__LIMA_3D__ = { map, presets: PRESETS };

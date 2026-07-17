@@ -2,6 +2,19 @@
 
 The application code and the map data are licensed separately.
 
+## Google Maps Platform runtime content
+
+The optional Google Reality engine uses the Maps JavaScript API `Map3DElement` in hybrid photorealistic mode. The Old City Prime ground-level panel uses the official `StreetViewPanorama` viewer. Google content is requested directly from Google at runtime under the production site's Google Maps Platform agreement; no Google imagery, panorama tile, or photorealistic mesh is committed, cached, traced, or baked into repository assets.
+
+Google and any named contributing providers retain their rights. The application preserves the attribution rendered by the Google viewers and publishes project Terms of Use and Privacy Policy pages:
+
+- https://developers.google.com/maps/documentation/javascript/3d
+- https://developers.google.com/maps/documentation/javascript/streetview
+- https://developers.google.com/maps/documentation/javascript/policies
+- https://policies.google.com/privacy
+
+The runtime browser key must be restricted by HTTP referrer to the production origin and restricted to the enabled Maps APIs. The blank committed `public/runtime-config.json` deliberately contains no credential.
+
 ## OpenStreetMap
 
 The committed files under `public/data` are derived from OpenStreetMap through Nominatim and the Overpass API.

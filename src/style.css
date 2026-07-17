@@ -71,6 +71,99 @@ input:focus-visible + .switch {
   background: #dde1da;
 }
 
+.google-reality {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  background: #cbd4d3;
+}
+
+.google-reality[hidden] {
+  display: none;
+}
+
+.google-reality gmp-map-3d,
+#google-map-3d {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+body[data-reality-mode="google"] .atmosphere {
+  opacity: 0.12;
+}
+
+.street-view-shell {
+  position: fixed;
+  top: max(84px, calc(env(safe-area-inset-top) + 72px));
+  right: 384px;
+  bottom: max(38px, env(safe-area-inset-bottom));
+  left: max(28px, env(safe-area-inset-left));
+  z-index: 18;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  background: #101b18;
+  box-shadow: 0 30px 90px rgba(2, 9, 7, 0.52);
+}
+
+.street-view-shell[hidden] {
+  display: none;
+}
+
+.street-view-shell__head {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  z-index: 2;
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+  justify-content: space-between;
+  min-width: 310px;
+  padding: 12px 12px 12px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 6px;
+  background: rgba(11, 21, 18, 0.94);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.28);
+}
+
+.street-view-shell__head span,
+.street-view-shell__head strong,
+.street-view-shell__head small {
+  display: block;
+}
+
+.street-view-shell__head span {
+  color: #90a198;
+  font-size: 7px;
+  font-weight: 750;
+  letter-spacing: 0.13em;
+}
+
+.street-view-shell__head span b {
+  color: #71ce8f;
+}
+
+.street-view-shell__head strong {
+  margin-top: 5px;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.street-view-shell__head small {
+  margin-top: 2px;
+  color: #91a099;
+  font-size: 8px;
+}
+
+.street-view-map {
+  width: 100%;
+  height: 100%;
+}
+
 .atmosphere {
   position: fixed;
   inset: 0;
@@ -261,6 +354,97 @@ html[data-theme="night"] .atmosphere {
 .control-section {
   padding: 18px 20px;
   border-bottom: 1px solid var(--line);
+}
+
+.reality-section {
+  background: linear-gradient(135deg, rgba(53, 104, 152, 0.12), rgba(223, 189, 104, 0.025));
+}
+
+.reality-switch {
+  display: grid;
+  gap: 5px;
+}
+
+.reality-option,
+.street-view-button {
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  gap: 9px;
+  align-items: center;
+  width: 100%;
+  padding: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.025);
+  color: #c9d2cd;
+  text-align: left;
+  cursor: pointer;
+}
+
+.reality-option:hover,
+.street-view-button:hover {
+  border-color: rgba(223, 189, 104, 0.32);
+  background: rgba(255, 255, 255, 0.055);
+}
+
+.reality-option.is-active {
+  border-color: rgba(223, 189, 104, 0.42);
+  background: linear-gradient(100deg, rgba(223, 189, 104, 0.16), rgba(75, 126, 170, 0.08));
+  color: #fff;
+}
+
+.reality-option.is-unavailable,
+.street-view-button.is-unavailable {
+  opacity: 0.62;
+}
+
+.reality-option__icon,
+.street-view-button > span:first-child {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border: 1px solid rgba(223, 189, 104, 0.42);
+  border-radius: 50%;
+  color: var(--accent);
+  font: 700 9px ui-monospace, monospace;
+}
+
+.reality-option strong,
+.reality-option small,
+.street-view-button strong,
+.street-view-button small {
+  display: block;
+}
+
+.reality-option strong,
+.street-view-button strong {
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.reality-option small,
+.street-view-button small {
+  margin-top: 2px;
+  color: #788a82;
+  font-size: 8px;
+}
+
+.reality-option b,
+.street-view-button b {
+  color: var(--accent);
+  font-size: 7px;
+  letter-spacing: 0.1em;
+}
+
+.street-view-button {
+  margin-top: 7px;
+  border-color: rgba(69, 135, 189, 0.24);
+  background: rgba(53, 112, 161, 0.08);
+}
+
+.preset--landmark {
+  border-color: rgba(223, 189, 104, 0.13);
 }
 
 .section-heading {
@@ -899,6 +1083,11 @@ input:checked + .switch::after {
   .maplibregl-ctrl-bottom-right {
     right: 342px;
   }
+
+  .street-view-shell {
+    right: 350px;
+    left: 14px;
+  }
 }
 
 @media (max-width: 700px) {
@@ -932,6 +1121,20 @@ input:checked + .switch::after {
     max-height: min(75vh, 650px);
     border-radius: 8px;
     transform: translateY(0);
+  }
+
+  .street-view-shell {
+    top: 72px;
+    right: 10px;
+    bottom: 10px;
+    left: 10px;
+  }
+
+  .street-view-shell__head {
+    top: 9px;
+    left: 9px;
+    min-width: 0;
+    width: calc(100% - 18px);
   }
 
   .panel-closed .control-panel {
