@@ -57,4 +57,6 @@ test("Google reality is licensed, deferred, and credential-safe", () => {
   assert.doesNotMatch(runtimeConfig, /AIza[0-9A-Za-z_-]{30,}/);
   assert.match(terms, /Google Maps\/Google Earth Additional Terms/);
   assert.match(privacy, /Google Privacy Policy/);
+  assert.match(application, /cancelledTileRequest/);
+  assert.match(application, /Failed to fetch \\\(0\\\)/);
 });

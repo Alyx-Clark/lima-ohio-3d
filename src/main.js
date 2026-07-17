@@ -1716,7 +1716,9 @@ function initializeMap() {
   map.on("error", (event) => {
     const resourceError = event.error || event;
     const resourceDetail = resourceError?.message || resourceError?.url || resourceError?.status || "unknown resource failure";
-    console.warn(`Map resource error: ${resourceDetail}`);
+    const cancelledTileRequest = loaded && /Failed to fetch \(0\)|AbortError|request (?:aborted|cancelled)/i.test(resourceDetail);
+    if (cancelledTileRequest) console.debug("Map tile request cancelled during a camera or page transition");
+    else console.warn(`Map resource error: ${resourceDetail}`);
     if (!loaded && activeRealityMode === "open") elements.renderStatus.textContent = "RETRYING";
   });
 
