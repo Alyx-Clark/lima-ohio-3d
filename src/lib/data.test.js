@@ -12,6 +12,15 @@ const BUILDING_TILES_PATH = new URL("../../public/data/lima-buildings.pmtiles", 
 const TREE_METADATA_PATH = new URL("../../public/data/lima-trees-metadata.json", import.meta.url);
 const TREE_PATH = new URL("../../public/data/lima-trees.json", import.meta.url);
 const COMPRESSED_TREE_PATH = new URL("../../public/data/lima-trees.json.gz", import.meta.url);
+const TRAFFIC_PATH = new URL("../../public/data/lima-traffic.json", import.meta.url);
+const COMPRESSED_TRAFFIC_PATH = new URL("../../public/data/lima-traffic.json.gz", import.meta.url);
+const TRAFFIC_METADATA_PATH = new URL("../../public/data/lima-traffic-metadata.json", import.meta.url);
+const ROOFTOP_PATH = new URL("../../public/data/lima-rooftops.json", import.meta.url);
+const COMPRESSED_ROOFTOP_PATH = new URL("../../public/data/lima-rooftops.json.gz", import.meta.url);
+const ROOFTOP_METADATA_PATH = new URL("../../public/data/lima-rooftops-metadata.json", import.meta.url);
+const FACADE_PATH = new URL("../../public/data/lima-facades.json", import.meta.url);
+const COMPRESSED_FACADE_PATH = new URL("../../public/data/lima-facades.json.gz", import.meta.url);
+const FACADE_METADATA_PATH = new URL("../../public/data/lima-facades-metadata.json", import.meta.url);
 
 const [detail, boundary, metadata] = await Promise.all(
   [DATA_PATH, BOUNDARY_PATH, METADATA_PATH].map(async (url) => JSON.parse(await readFile(url, "utf8"))),
@@ -23,6 +32,20 @@ const [buildingMetadata, treeMetadata, treeInventory] = await Promise.all(
   ),
 );
 const compressedTrees = await readFile(COMPRESSED_TREE_PATH);
+const [traffic, trafficMetadata, rooftop, rooftopMetadata] = await Promise.all(
+  [TRAFFIC_PATH, TRAFFIC_METADATA_PATH, ROOFTOP_PATH, ROOFTOP_METADATA_PATH].map(async (url) =>
+    JSON.parse(await readFile(url, "utf8")),
+  ),
+);
+const [compressedTraffic, compressedRooftops] = await Promise.all([
+  readFile(COMPRESSED_TRAFFIC_PATH),
+  readFile(COMPRESSED_ROOFTOP_PATH),
+]);
+const [facades, facadeMetadata, compressedFacades] = await Promise.all([
+  FACADE_PATH,
+  FACADE_METADATA_PATH,
+  COMPRESSED_FACADE_PATH,
+].map(async (url, index) => (index === 2 ? readFile(url) : JSON.parse(await readFile(url, "utf8")))));
 
 function categoryCount(category) {
   return detail.features.filter((feature) => feature.properties.category === category).length;
@@ -103,4 +126,48 @@ test("LiDAR canopy spans the southern and northern municipal extents", () => {
         latitude <= treeMetadata.bounds[3],
     ),
   );
+});
+
+test("traffic routes cover the city while staying streamable", async () => {
+  const compressed = await stat(COMPRESSED_TRAFFIC_PATH);
+  assert.equal(traffic.routes.length, trafficMetadata.counts.routes);
+  assert.ok(traffic.routes.length > 4_000);
+  assert.ok(trafficMetadata.counts.routeKilometers > 900);
+  assert.ok(
+    traffic.routes.every(
+      (route) =>
+        route.length === 5 &&
+        route[4].length >= 2 &&
+        route[4].every((coordinate) => coordinate.length === 2 && coordinate.every(Number.isFinite)),
+    ),
+  );
+  assert.ok(compressed.size < 300_000, `compressed traffic is ${compressed.size.toLocaleString()} bytes`);
+  assert.deepEqual(JSON.parse(gunzipSync(compressedTraffic)), traffic);
+});
+
+test("procedural roof details remain inside a compact payload", async () => {
+  const compressed = await stat(COMPRESSED_ROOFTOP_PATH);
+  assert.equal(rooftop.features.length, rooftopMetadata.counts.features);
+  assert.ok(rooftop.features.length > 4_000);
+  assert.ok(rooftop.features.every((feature) => everyCoordinateIsFinite(feature.geometry.coordinates)));
+  assert.ok(
+    rooftop.features.every(
+      (feature) =>
+        Number.isFinite(feature.properties.base) && feature.properties.height > feature.properties.base,
+    ),
+  );
+  assert.ok(compressed.size < 260_000, `compressed rooftops are ${compressed.size.toLocaleString()} bytes`);
+  assert.deepEqual(JSON.parse(gunzipSync(compressedRooftops)), rooftop);
+});
+
+test("street-facing facade layouts are citywide, individualized, and streamable", async () => {
+  const compressed = await stat(COMPRESSED_FACADE_PATH);
+  assert.equal(facades.walls.length, facadeMetadata.counts.streetFacingWalls);
+  assert.ok(facades.walls.length > 25_000);
+  assert.ok(facades.names.length > 200);
+  assert.ok(facadeMetadata.counts.osmEnrichedBuildings > 200);
+  assert.ok(facades.walls.every((wall) => wall.length === 13 && wall.every(Number.isFinite)));
+  assert.ok(facades.walls.every((wall) => wall[3] >= 3 && wall[4] > wall[5] && wall[6] >= 0 && wall[6] <= 6));
+  assert.ok(compressed.size < 700_000, `compressed facades are ${compressed.size.toLocaleString()} bytes`);
+  assert.deepEqual(JSON.parse(gunzipSync(compressedFacades)), facades);
 });

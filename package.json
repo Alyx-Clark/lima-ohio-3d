@@ -15,8 +15,15 @@
     "data:build": "node scripts/build-osm-data.mjs data/source/lima-overpass.json public/data",
     "data:buildings": "node scripts/build-overture-buildings.mjs public/data",
     "data:lidar": "node scripts/build-lidar-trees.mjs public/data",
+    "data:traffic:fetch": "node scripts/fetch-traffic.mjs data/source/lima-traffic-overpass.json",
+    "data:traffic:build": "node scripts/build-traffic-routes.mjs data/source/lima-traffic-overpass.json public/data",
+    "data:traffic": "npm run data:traffic:fetch && npm run data:traffic:build",
+    "data:rooftops": "node scripts/build-rooftop-details.mjs data/source/lima-buildings.geojsonseq public/data",
+    "data:facades:fetch": "node scripts/fetch-facade-pois.mjs data/source/lima-facade-pois-overpass.json",
+    "data:facades:build": "node scripts/build-facade-details.mjs data/source/lima-buildings.geojsonseq public/data/lima-traffic.json data/source/lima-facade-pois-overpass.json public/data",
+    "data:facades": "npm run data:facades:fetch && npm run data:facades:build",
     "data:realism": "npm run data:buildings && npm run data:lidar",
-    "data:refresh": "npm run data:fetch && npm run data:build && npm run data:realism"
+    "data:refresh": "npm run data:fetch && npm run data:build && npm run data:realism && npm run data:traffic && npm run data:rooftops && npm run data:facades"
   },
   "devDependencies": {
     "eslint": "^10.7.0",
@@ -28,6 +35,8 @@
     "node": ">=22.12"
   },
   "dependencies": {
-    "pmtiles": "^4.4.1"
+    "@googlemaps/js-api-loader": "2.1.1",
+    "pmtiles": "^4.4.1",
+    "three": "^0.185.1"
   }
 }

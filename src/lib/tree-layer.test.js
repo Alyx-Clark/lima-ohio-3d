@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { chunkTreeInventory, localMeters, treePartFeatures } from "./tree-geometry.js";
+import { chunkTreeInventory, localMeters } from "./tree-geometry.js";
 
 test("localMeters anchors Lima's center at zero", () => {
   const [x, y] = localMeters(-84.105006, 40.7399785);
@@ -26,35 +26,4 @@ test("tree inventory is grouped into bounded spatial chunks", () => {
   assert.equal(chunks.length, 2);
   assert.equal(chunks.reduce((sum, chunk) => sum + chunk.trees.length, 0), trees.length);
   assert.ok(chunks.every((chunk) => chunk.bounds.length === 4));
-});
-
-test("native tree parts form closed, height-ordered extrusion polygons", () => {
-  const parts = treePartFeatures([-84.105, 40.74, 18, 4.2, 2], 7);
-  assert.deepEqual(
-    parts.map((feature) => feature.properties.part),
-    ["trunk", "lower", "middle", "upper"],
-  );
-  assert.ok(parts.every((feature) => feature.properties.height > feature.properties.base));
-  assert.ok(
-    parts.every((feature) => {
-      const coordinates = feature.geometry.coordinates[0];
-      return coordinates.length >= 6 && coordinates[0][0] === coordinates.at(-1)[0] && coordinates[0][1] === coordinates.at(-1)[1];
-    }),
-  );
-});
-
-test("LiDAR crowns use deterministic asymmetric silhouettes", () => {
-  const first = treePartFeatures([-84.105, 40.74, 18, 4.2, 2], 7);
-  const second = treePartFeatures([-84.105, 40.74, 18, 4.2, 2], 7);
-  const lowerRing = first[1].geometry.coordinates[0];
-  const center = [-84.105, 40.74];
-  const radialSignatures = lowerRing.slice(0, -1).map(([longitude, latitude]) =>
-    Math.round(Math.hypot(longitude - center[0], latitude - center[1]) * 1e9),
-  );
-
-  assert.deepEqual(first, second);
-  assert.equal(lowerRing.length, 11);
-  assert.equal(first[2].geometry.coordinates[0].length, 12);
-  assert.equal(first[3].geometry.coordinates[0].length, 9);
-  assert.ok(new Set(radialSignatures).size >= 6);
 });

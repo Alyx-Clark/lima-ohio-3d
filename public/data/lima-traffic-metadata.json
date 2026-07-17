@@ -1,0 +1,23 @@
+{
+  "city": "Lima, Ohio",
+  "generatedAt": "2026-07-17T02:32:26.960Z",
+  "osmTimestamp": "2026-07-17T02:30:40Z",
+  "source": "OpenStreetMap drivable ways via Overpass API",
+  "license": "ODbL 1.0",
+  "counts": {
+    "routes": 4474,
+    "routeKilometers": 997.4,
+    "byClass": {
+      "motorway": 37,
+      "trunk": 0,
+      "primary": 75,
+      "secondary": 91,
+      "tertiary": 130,
+      "residential": 1082,
+      "living_street": 0,
+      "unclassified": 32,
+      "service": 3027
+    }
+  },
+  "note": "Routes drive a deterministic cinematic traffic simulation; vehicle locations are visualizations, not live observations."
+}

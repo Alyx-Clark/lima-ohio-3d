@@ -8,6 +8,10 @@ import {
   moveCenter,
   normalizeBearing,
 } from "./lib/flight.js";
+import {
+  createGoogleRealityController,
+  loadGoogleMapsConfig,
+} from "./lib/google-reality.js";
 
 const { maplibregl } = window;
 
@@ -17,7 +21,7 @@ const DATA_BASE = `${import.meta.env.BASE_URL}data/`;
 const BUILDINGS_PM_TILES = new URL(`${DATA_BASE}lima-buildings.pmtiles`, window.location.href).href;
 const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 const FACADE_TYPES = ["residential", "urban", "industrial"];
-const MATERIAL_VARIANTS = [0, 1, 2, 3, 4];
+const MATERIAL_VARIANTS = [0, 1, 2, 3, 4, 5, 6, 7];
 const HIGH_PITCH_CULLED_LABELS = new Set([
   "highway-shield-non-us",
   "highway-shield-us-interstate",
@@ -43,6 +47,13 @@ const PRESETS = {
     bearing: -31,
     duration: 2_400,
   },
+  oldcity: {
+    center: [-84.10486, 40.73852],
+    zoom: 18.35,
+    pitch: 76,
+    bearing: -86,
+    duration: 2_300,
+  },
   museum: {
     center: [-84.1138168, 40.7406108],
     zoom: 17.45,
@@ -65,13 +76,21 @@ const PRESETS = {
     duration: 2_450,
   },
   street: {
-    center: [-84.10472, 40.73952],
-    zoom: 18.35,
+    center: [-84.10166, 40.74057],
+    zoom: 18.55,
     pitch: 81,
-    bearing: 3,
+    bearing: 180,
     duration: 2_600,
   },
 };
+
+const CINEMATIC_SHOTS = [
+  { center: [-84.1069, 40.7408], zoom: 16.1, pitch: 72, bearing: -42, duration: 6_600 },
+  { center: [-84.1036, 40.7396], zoom: 17.35, pitch: 79, bearing: 22, duration: 7_200 },
+  { center: [-84.1141, 40.7407], zoom: 17.1, pitch: 73, bearing: 67, duration: 6_400 },
+  { center: [-84.0964, 40.7491], zoom: 16.45, pitch: 67, bearing: 151, duration: 7_000 },
+  { center: [-84.1565, 40.7613], zoom: 16.15, pitch: 70, bearing: -58, duration: 7_200 },
+];
 
 const LIGHT_MODES = {
   day: {
@@ -108,6 +127,8 @@ const GROUP_LAYERS = {
     "lima-buildings-urban",
     "lima-buildings-industrial",
     "lima-building-roofs",
+    "lima-building-cornices",
+    "lima-rooftop-detail",
   ],
   trees: ["lima-tree-trunks", "lima-tree-crowns-mapped", "lima-tree-crowns-inferred"],
   pedestrian: ["lima-green-space", "lima-path-casing", "lima-pedestrian", "lima-steps", "lima-hedges"],
@@ -127,6 +148,17 @@ const elements = {
   presetIndex: document.querySelector("#preset-index"),
   sourceSummary: document.querySelector("#source-summary"),
   toast: document.querySelector("#toast"),
+  map: document.querySelector("#map"),
+  googleReality: document.querySelector("#google-reality"),
+  googleMode: document.querySelector('[data-reality-mode="google"]'),
+  openMode: document.querySelector('[data-reality-mode="open"]'),
+  googleModeStatus: document.querySelector("#google-mode-status"),
+  streetViewShell: document.querySelector("#street-view-shell"),
+  streetViewMap: document.querySelector("#street-view-map"),
+  streetViewStatus: document.querySelector("#street-view-status"),
+  openStreetView: document.querySelector("#open-street-view"),
+  closeStreetView: document.querySelector("#close-street-view"),
+  openAttribution: document.querySelector("#open-attribution"),
 };
 
 let labelLayerIds = [];
@@ -137,6 +169,15 @@ let lidarTreeLayer;
 let activeLightMode = "day";
 let labelsVisible = true;
 let highPitchLabelsCulled = false;
+let trafficLayer;
+let buildingsVisible = true;
+let facadesVisible = true;
+let cinematicTourActive = false;
+let cinematicTourTimer;
+let activeRealityMode = "open";
+let googleRealityController;
+let googleRealityConfig;
+let googleRealityInitialization;
 
 const pmtilesProtocol = maplibregl ? new Protocol() : null;
 if (pmtilesProtocol) maplibregl.addProtocol("pmtiles", pmtilesProtocol.tile);
@@ -172,6 +213,9 @@ async function loadCompressedJson(name) {
 
 const loadDetailData = () => loadCompressedJson("lima-detail");
 const loadTreeData = () => loadCompressedJson("lima-trees");
+const loadTrafficData = () => loadCompressedJson("lima-traffic");
+const loadRooftopData = () => loadCompressedJson("lima-rooftops");
+const loadFacadeData = () => loadCompressedJson("lima-facades");
 function safePaint(map, layerId, property, value) {
   if (!map.getLayer(layerId)) return;
   try {
@@ -222,56 +266,126 @@ function createFacadePattern(facadeType, mode, variant) {
   context.fillRect(0, 0, 96, 96);
 
   const materialTints = {
-    day: ["rgba(255,255,255,0)", "rgba(116,70,45,0.13)", "rgba(247,231,198,0.17)", "rgba(76,101,104,0.13)", "rgba(96,70,57,0.1)"],
-    golden: ["rgba(255,255,255,0)", "rgba(130,67,38,0.16)", "rgba(246,215,167,0.15)", "rgba(77,91,94,0.12)", "rgba(112,67,45,0.12)"],
-    night: ["rgba(255,255,255,0)", "rgba(31,20,18,0.22)", "rgba(90,86,70,0.14)", "rgba(27,49,53,0.2)", "rgba(53,34,29,0.16)"],
+    day: [
+      "rgba(255,255,255,0)",
+      "rgba(116,70,45,0.16)",
+      "rgba(247,231,198,0.2)",
+      "rgba(76,101,104,0.15)",
+      "rgba(96,70,57,0.12)",
+      "rgba(228,215,187,0.18)",
+      "rgba(72,88,92,0.16)",
+      "rgba(143,91,67,0.15)",
+    ],
+    golden: [
+      "rgba(255,255,255,0)",
+      "rgba(130,67,38,0.18)",
+      "rgba(246,215,167,0.17)",
+      "rgba(77,91,94,0.14)",
+      "rgba(112,67,45,0.14)",
+      "rgba(226,193,143,0.16)",
+      "rgba(70,78,82,0.15)",
+      "rgba(148,75,48,0.17)",
+    ],
+    night: [
+      "rgba(255,255,255,0)",
+      "rgba(31,20,18,0.24)",
+      "rgba(90,86,70,0.16)",
+      "rgba(27,49,53,0.22)",
+      "rgba(53,34,29,0.18)",
+      "rgba(77,68,49,0.18)",
+      "rgba(17,31,35,0.22)",
+      "rgba(60,27,21,0.2)",
+    ],
   };
   context.fillStyle = materialTints[mode][variant];
   context.fillRect(0, 0, 96, 96);
 
-  if (facadeType === "residential") {
+  const family = variant % 4;
+  if (facadeType === "residential" && family === 0) {
     context.strokeStyle = palette[1];
     context.globalAlpha = 0.34;
     context.lineWidth = 2;
-    const sidingSpacing = [12, 10, 14, 8, 12][variant];
+    const sidingSpacing = [12, 10, 14, 8, 11, 9, 13, 7][variant];
     for (let y = 8; y < 96; y += sidingSpacing) {
       context.beginPath();
       context.moveTo(0, y);
       context.lineTo(96, y);
       context.stroke();
     }
-    if (variant === 3) {
-      context.globalAlpha = 0.2;
-      for (let x = 0; x < 96; x += 12) {
-        context.beginPath();
-        context.moveTo(x, 0);
-        context.lineTo(x, 96);
-        context.stroke();
-      }
-    }
     context.globalAlpha = 1;
-  } else if (facadeType === "urban") {
-    context.strokeStyle = palette[3];
-    context.globalAlpha = 0.24;
+  } else if (facadeType === "residential" && family === 1) {
+    context.strokeStyle = palette[1];
+    context.globalAlpha = 0.3;
     context.lineWidth = 1;
-    for (let y = 0; y <= 96; y += 12) {
+    for (let y = 0; y <= 96; y += 8) {
       context.beginPath();
       context.moveTo(0, y);
       context.lineTo(96, y);
       context.stroke();
+      for (let x = (y / 8) % 2 ? 0 : -12; x <= 96; x += 24) {
+        context.beginPath();
+        context.moveTo(x, y);
+        context.lineTo(x, Math.min(96, y + 8));
+        context.stroke();
+      }
     }
-    for (let x = variant % 2 ? 12 : 0; x <= 96; x += 24) {
+    context.globalAlpha = 1;
+  } else if (facadeType === "residential" && family === 2) {
+    context.fillStyle = mode === "night" ? "rgba(138,146,139,0.08)" : "rgba(255,255,255,0.18)";
+    for (let index = 0; index < 70; index += 1) {
+      context.fillRect((index * 37 + variant * 11) % 96, (index * 53 + variant * 7) % 96, 1, 1);
+    }
+  } else if (facadeType === "residential") {
+    context.strokeStyle = palette[1];
+    context.globalAlpha = 0.27;
+    context.lineWidth = 2;
+    for (let x = 0; x <= 96; x += variant === 3 ? 12 : 9) {
       context.beginPath();
       context.moveTo(x, 0);
       context.lineTo(x, 96);
       context.stroke();
     }
     context.globalAlpha = 1;
-  } else {
+  } else if (facadeType === "urban" && (family === 0 || family === 1)) {
+    context.strokeStyle = palette[3];
+    context.globalAlpha = family === 0 ? 0.26 : 0.19;
+    context.lineWidth = 1;
+    const course = family === 0 ? 10 : 16;
+    for (let y = 0; y <= 96; y += course) {
+      context.beginPath();
+      context.moveTo(0, y);
+      context.lineTo(96, y);
+      context.stroke();
+    }
+    for (let x = variant % 2 ? course : 0; x <= 96; x += course * 2) {
+      context.beginPath();
+      context.moveTo(x, 0);
+      context.lineTo(x, 96);
+      context.stroke();
+    }
+    context.globalAlpha = 1;
+  } else if (facadeType === "urban") {
+    context.strokeStyle = palette[1];
+    context.globalAlpha = 0.23;
+    context.lineWidth = 2;
+    for (let x = 0; x <= 96; x += family === 2 ? 24 : 14) {
+      context.beginPath();
+      context.moveTo(x, 0);
+      context.lineTo(x, 96);
+      context.stroke();
+    }
+    for (let y = 0; y <= 96; y += family === 2 ? 24 : 18) {
+      context.beginPath();
+      context.moveTo(0, y);
+      context.lineTo(96, y);
+      context.stroke();
+    }
+    context.globalAlpha = 1;
+  } else if (family === 0 || family === 2) {
     context.strokeStyle = palette[1];
     context.globalAlpha = 0.4;
     context.lineWidth = 2;
-    const panelSpacing = [16, 12, 20, 24, 14][variant];
+    const panelSpacing = [16, 12, 20, 24, 14, 18, 22, 10][variant];
     for (let x = 0; x <= 96; x += panelSpacing) {
       context.beginPath();
       context.moveTo(x, 0);
@@ -279,25 +393,21 @@ function createFacadePattern(facadeType, mode, variant) {
       context.stroke();
     }
     context.globalAlpha = 1;
+  } else {
+    context.strokeStyle = palette[3];
+    context.globalAlpha = 0.24;
+    context.lineWidth = 1;
+    for (let x = 0; x <= 96; x += 24) {
+      for (let y = 0; y <= 96; y += 16) context.strokeRect(x, y, 24, 16);
+    }
+    context.globalAlpha = 1;
   }
 
-  context.fillStyle = palette[1];
-  context.fillRect(9, 17, 30, 30);
-  context.fillRect(57, 17, 30, 30);
-  context.fillRect(9, 63, 30, 24);
-  context.fillRect(57, 63, 30, 24);
-  context.fillStyle = palette[2];
-  context.fillRect(12, 20, 24, 24);
-  context.fillRect(60, 20, 24, 24);
-  context.fillRect(12, 66, 24, 18);
-  if (mode === "night") context.fillRect(60, 66, 24, 18);
-  context.strokeStyle = palette[3];
-  context.globalAlpha = 0.48;
-  for (const x of [24, 72]) {
-    context.beginPath();
-    context.moveTo(x, 18);
-    context.lineTo(x, 87);
-    context.stroke();
+  context.fillStyle = mode === "night" ? "rgba(3,10,11,0.12)" : "rgba(42,35,30,0.1)";
+  for (let index = 0; index < 34; index += 1) {
+    const x = (index * 31 + variant * 17) % 96;
+    const y = (index * 47 + variant * 13) % 96;
+    context.fillRect(x, y, index % 6 === 0 ? 3 : 1, index % 5 === 0 ? 2 : 1);
   }
   context.globalAlpha = 1;
   return context.getImageData(0, 0, 96, 96);
@@ -309,9 +419,9 @@ function createRoofPattern(mode, variant) {
   canvas.height = 64;
   const context = canvas.getContext("2d", { alpha: false });
   const bases = {
-    day: ["#999083", "#756b62", "#a8aaa5", "#79685b", "#8e8170"],
-    golden: ["#9b8068", "#77594b", "#a59c89", "#805e49", "#927158"],
-    night: ["#414746", "#343838", "#4b5351", "#3c3938", "#45413e"],
+    day: ["#999083", "#756b62", "#a8aaa5", "#79685b", "#8e8170", "#686f70", "#a3957d", "#605954"],
+    golden: ["#9b8068", "#77594b", "#a59c89", "#805e49", "#927158", "#6c6b64", "#a38a67", "#665247"],
+    night: ["#414746", "#343838", "#4b5351", "#3c3938", "#45413e", "#303a3c", "#4a463e", "#302f2e"],
   };
   const seams = {
     day: "rgba(52,48,43,0.24)",
@@ -323,7 +433,7 @@ function createRoofPattern(mode, variant) {
   context.strokeStyle = seams[mode];
   context.lineWidth = 1;
 
-  if (variant === 2) {
+  if (variant % 4 === 2) {
     for (let x = 0; x <= 64; x += 8) {
       context.beginPath();
       context.moveTo(x, 0);
@@ -331,13 +441,13 @@ function createRoofPattern(mode, variant) {
       context.stroke();
     }
   } else {
-    for (let y = 0; y <= 64; y += variant === 1 ? 8 : 12) {
+    for (let y = 0; y <= 64; y += variant % 4 === 1 ? 8 : 12) {
       context.beginPath();
       context.moveTo(0, y);
       context.lineTo(64, y);
       context.stroke();
     }
-    if (variant === 0 || variant === 4) {
+    if (variant % 4 === 0) {
       for (let y = 0; y < 64; y += 12) {
         for (let x = (y / 12) % 2 ? -8 : 0; x < 64; x += 16) {
           context.beginPath();
@@ -349,7 +459,19 @@ function createRoofPattern(mode, variant) {
     }
   }
 
-  if (variant === 3) {
+  context.fillStyle = mode === "night" ? "rgba(155,172,169,0.1)" : "rgba(241,235,219,0.15)";
+  for (let index = 0; index < 42; index += 1) {
+    const x = (index * 37 + variant * 13) % 64;
+    const y = (index * 23 + variant * 19) % 64;
+    const size = index % 5 === 0 ? 2 : 1;
+    context.fillRect(x, y, size, size);
+  }
+  context.fillStyle = mode === "night" ? "rgba(3,10,11,0.14)" : "rgba(49,45,40,0.11)";
+  for (let index = 0; index < 16; index += 1) {
+    context.fillRect((index * 29 + variant * 7) % 64, (index * 17 + variant * 5) % 64, 2, 1);
+  }
+
+  if (variant % 4 === 3) {
     context.fillStyle = mode === "night" ? "#1d292b" : "#51636a";
     context.fillRect(10, 12, 15, 10);
     context.fillRect(39, 36, 11, 9);
@@ -375,6 +497,29 @@ function roofPatternExpression(mode) {
     ["get", "material_variant"],
     ...MATERIAL_VARIANTS.flatMap((variant) => [variant, `roof-${mode}-${variant}`]),
     `roof-${mode}-0`,
+  ];
+}
+
+function rooftopColorExpression(mode) {
+  const palette = {
+    day: ["#9ca5a3", "#c2c9c6", "#7d5545", "#294856", "#1f3a52", "#8f9794"],
+    golden: ["#9d9990", "#c7beb0", "#80523d", "#344851", "#29435b", "#908a80"],
+    night: ["#3b4748", "#536063", "#3e2d28", "#13262f", "#10243a", "#384345"],
+  }[mode];
+  return [
+    "match",
+    ["get", "kind"],
+    "hvac",
+    palette[0],
+    "vent",
+    palette[1],
+    "chimney",
+    palette[2],
+    "skylight",
+    palette[3],
+    "solar",
+    palette[4],
+    palette[5],
   ];
 }
 
@@ -487,6 +632,32 @@ function addMeasuredBuildings(map, beforeLabels) {
     beforeLabels,
   );
 
+  map.addLayer(
+    {
+      id: "lima-building-cornices",
+      type: "fill-extrusion",
+      source: "lima-buildings",
+      "source-layer": "buildings",
+      minzoom: 15.35,
+      paint: {
+        "fill-extrusion-color": [
+          "match",
+          ["get", "facade_type"],
+          "urban",
+          "#b99b80",
+          "industrial",
+          "#aeb3ae",
+          "#d4c9b4",
+        ],
+        "fill-extrusion-base": ["get", "height"],
+        "fill-extrusion-height": ["+", ["get", "height"], 0.22],
+        "fill-extrusion-opacity": 0.96,
+        "fill-extrusion-vertical-gradient": true,
+      },
+    },
+    beforeLabels,
+  );
+
   if (map.getLayer("building-3d")) map.setLayerZoomRange("building-3d", 0, 13.25);
   if (map.getLayer("building")) map.setLayerZoomRange("building", 0, 13.25);
 }
@@ -498,7 +669,7 @@ function styleMeasuredBuildings(map, mode) {
   safePaint(map, "lima-building-roofs", "fill-extrusion-pattern", roofPatternExpression(mode));
 }
 
-function addLimaLayers(map, detailData) {
+function addLimaLayers(map, detailData, rooftopData) {
   const beforeBuildings = layerAnchor(map, "building-3d");
   const beforeLabels = layerAnchor(map);
 
@@ -514,6 +685,28 @@ function addLimaLayers(map, detailData) {
     data: detailData,
     generateId: false,
   });
+  map.addSource("lima-rooftops", {
+    type: "geojson",
+    data: rooftopData,
+    generateId: false,
+  });
+
+  map.addLayer(
+    {
+      id: "lima-rooftop-detail",
+      type: "fill-extrusion",
+      source: "lima-rooftops",
+      minzoom: 15.45,
+      paint: {
+        "fill-extrusion-color": rooftopColorExpression("day"),
+        "fill-extrusion-base": ["get", "base"],
+        "fill-extrusion-height": ["get", "height"],
+        "fill-extrusion-opacity": 0.98,
+        "fill-extrusion-vertical-gradient": true,
+      },
+    },
+    beforeLabels,
+  );
 
   map.addLayer(
     {
@@ -881,6 +1074,17 @@ function styleBaseMap(map, mode = "day") {
   safePaint(map, "building-3d", "fill-extrusion-opacity", 0.91);
   safePaint(map, "building-3d", "fill-extrusion-vertical-gradient", true);
   styleMeasuredBuildings(map, mode);
+  safePaint(map, "lima-rooftop-detail", "fill-extrusion-color", rooftopColorExpression(mode));
+  safePaint(
+    map,
+    "lima-building-cornices",
+    "fill-extrusion-color",
+    mode === "night"
+      ? "#454a47"
+      : mode === "golden"
+        ? "#b79272"
+        : "#c9c2b5",
+  );
 
   const aerialLight = {
     day: { min: 0.08, max: 0.94, saturation: -0.08, contrast: 0.08 },
@@ -926,6 +1130,7 @@ function setLighting(map, mode) {
   });
   if (loaded) styleBaseMap(map, mode);
   lidarTreeLayer?.setTheme(mode);
+  trafficLayer?.setTheme(mode);
 }
 
 function setLayerGroup(map, group, visible) {
@@ -949,6 +1154,19 @@ function setLayerGroup(map, group, visible) {
   }
 
   if (group === "trees") lidarTreeLayer?.setVisible(visible);
+  if (group === "buildings") {
+    buildingsVisible = visible;
+    trafficLayer?.setFacadeVisible(buildingsVisible && facadesVisible);
+  }
+  if (group === "facades") {
+    facadesVisible = visible;
+    trafficLayer?.setFacadeVisible(buildingsVisible && facadesVisible);
+    return;
+  }
+  if (group === "traffic") {
+    trafficLayer?.setVisible(visible);
+    return;
+  }
 
   if (group === "labels") {
     labelsVisible = visible;
@@ -982,6 +1200,116 @@ function updateCameraReadout(map) {
   )}°`;
 }
 
+function updateGoogleCameraReadout(camera) {
+  const latitude = camera.center.lat;
+  const longitude = camera.center.lng;
+  elements.coordinates.textContent = `${Math.abs(latitude).toFixed(4)}° ${latitude >= 0 ? "N" : "S"} · ${Math.abs(
+    longitude,
+  ).toFixed(4)}° ${longitude >= 0 ? "E" : "W"}`;
+  elements.attitude.textContent = `R ${Math.round(camera.range)} m · P ${Math.round(camera.tilt)}° · B ${Math.round(
+    normalizeBearing(camera.heading),
+  )}°`;
+}
+
+function updateRealityButtons(mode) {
+  document.querySelectorAll("[data-reality-mode]").forEach((button) => {
+    const active = button.dataset.realityMode === mode;
+    button.classList.toggle("is-active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
+}
+
+function configureGoogleRealityController() {
+  if (googleRealityController) return googleRealityController;
+  googleRealityController = createGoogleRealityController({
+    mapContainer: elements.googleReality,
+    streetContainer: elements.streetViewMap,
+    onStatus(status) {
+      if (activeRealityMode === "google") elements.renderStatus.textContent = status;
+    },
+    onCamera: updateGoogleCameraReadout,
+    onStreetStatus(status) {
+      elements.streetViewStatus.textContent = status === "OK" ? "LIVE" : status;
+    },
+  });
+  return googleRealityController;
+}
+
+async function ensureGoogleReality() {
+  if (!googleRealityConfig?.isConfigured) return false;
+  const controller = configureGoogleRealityController();
+  if (controller.initialized) return true;
+  if (!googleRealityInitialization) {
+    googleRealityInitialization = controller.initialize(googleRealityConfig).catch((error) => {
+      googleRealityInitialization = null;
+      throw error;
+    });
+  }
+  await googleRealityInitialization;
+  return true;
+}
+
+async function setRealityMode(map, mode, announce = true) {
+  if (mode === "google") {
+    if (!googleRealityConfig?.isConfigured) {
+      showToast("Google Reality is installed · add the domain-restricted Maps key to runtime-config.json to activate it", 6_000);
+      return false;
+    }
+    try {
+      elements.renderStatus.textContent = "CONNECTING GOOGLE 3D";
+      await ensureGoogleReality();
+    } catch (error) {
+      console.error("Google Reality failed to initialize", error);
+      elements.renderStatus.textContent = "OPEN DATA READY";
+      elements.googleModeStatus.textContent = "RETRY";
+      showToast("Google Reality could not connect · the open-data city remains available", 5_000);
+      return false;
+    }
+  }
+
+  activeRealityMode = mode;
+  document.body.dataset.realityMode = mode;
+  elements.googleReality.hidden = mode !== "google";
+  elements.map.setAttribute("aria-hidden", String(mode === "google"));
+  elements.openAttribution.hidden = mode === "google";
+  updateRealityButtons(mode);
+
+  if (mode === "google") {
+    map.stop();
+    elements.renderStatus.textContent = "GOOGLE REALITY";
+    const activePreset = document.querySelector("[data-preset].is-active")?.dataset.preset || "overview";
+    await googleRealityController.flyTo(activePreset, prefersReducedMotion.matches ? 0 : 1_600);
+    if (announce) showToast("Google Photorealistic 3D · live licensed imagery");
+  } else {
+    googleRealityController?.stopAnimation();
+    googleRealityController?.hideStreetView();
+    elements.streetViewShell.hidden = true;
+    map.resize();
+    updateCameraReadout(map);
+    elements.renderStatus.textContent = loaded ? "OPEN DATA READY" : "STREAMING";
+    if (announce) showToast("Open-data reconstruction · optimized fallback");
+  }
+  return true;
+}
+
+async function initializeRealityMode(map) {
+  googleRealityConfig = await loadGoogleMapsConfig(import.meta.env.BASE_URL);
+  window.__LIMA_3D__.googleConfigured = googleRealityConfig.isConfigured;
+  if (!googleRealityConfig.isConfigured) {
+    elements.googleMode.classList.add("is-unavailable");
+    elements.googleModeStatus.textContent = "KEY NEEDED";
+    elements.openStreetView.classList.add("is-unavailable");
+    elements.openStreetView.setAttribute("aria-disabled", "true");
+    return;
+  }
+
+  elements.googleMode.classList.remove("is-unavailable");
+  elements.googleModeStatus.textContent = "LIVE";
+  elements.openStreetView.classList.remove("is-unavailable");
+  elements.openStreetView.removeAttribute("aria-disabled");
+  if (googleRealityConfig.defaultRealityMode === "google") await setRealityMode(map, "google", false);
+}
+
 function openPanel(open) {
   document.body.classList.toggle("panel-closed", !open);
   elements.panelToggle.setAttribute("aria-expanded", String(open));
@@ -989,16 +1317,20 @@ function openPanel(open) {
   elements.panel.inert = !open;
 }
 
-function flyToPreset(map, name, announce = true) {
+async function flyToPreset(map, name, announce = true) {
   const preset = PRESETS[name];
   if (!preset) return;
-  map.flyTo({
-    ...preset,
-    duration: prefersReducedMotion.matches ? 0 : preset.duration,
-    essential: false,
-    curve: 1.35,
-    speed: 0.72,
-  });
+  if (activeRealityMode === "google" && googleRealityController?.initialized) {
+    await googleRealityController.flyTo(name, prefersReducedMotion.matches ? 0 : preset.duration);
+  } else {
+    map.flyTo({
+      ...preset,
+      duration: prefersReducedMotion.matches ? 0 : preset.duration,
+      essential: false,
+      curve: 1.35,
+      speed: 0.72,
+    });
+  }
 
   const buttons = [...document.querySelectorAll("[data-preset]")];
   buttons.forEach((button) => button.classList.toggle("is-active", button.dataset.preset === name));
@@ -1007,6 +1339,56 @@ function flyToPreset(map, name, announce = true) {
     buttons.length,
   ).padStart(2, "0")}`;
   if (announce) showToast(`Flying to ${buttons[activeIndex]?.querySelector("strong")?.textContent || name}`);
+}
+
+function updateCinematicButton() {
+  const button = document.querySelector("#cinematic-tour");
+  if (!button) return;
+  button.classList.toggle("is-active", cinematicTourActive);
+  button.setAttribute("aria-pressed", String(cinematicTourActive));
+  button.querySelector("strong").textContent = cinematicTourActive ? "END TOUR" : "CINEMATIC TOUR";
+  button.querySelector("small").textContent = cinematicTourActive ? "RETURN TO MANUAL FLIGHT" : "DIRECTOR-CURATED FLYTHROUGH";
+}
+
+function stopCinematicTour(map, announce = false) {
+  if (!cinematicTourActive) return;
+  cinematicTourActive = false;
+  window.clearTimeout(cinematicTourTimer);
+  if (activeRealityMode === "google") googleRealityController?.stopAnimation();
+  else map.stop();
+  document.body.classList.remove("cinematic-active");
+  updateCinematicButton();
+  if (announce) showToast("Cinematic tour ended");
+}
+
+async function startCinematicTour(map) {
+  if (prefersReducedMotion.matches) {
+    showToast("Cinematic motion is disabled by your reduced-motion preference", 4_500);
+    return;
+  }
+  cinematicTourActive = true;
+  document.body.classList.add("cinematic-active");
+  updateCinematicButton();
+  if (activeRealityMode === "google") {
+    elements.renderStatus.textContent = "GOOGLE CINEMATIC";
+    showToast("Google cinematic orbit · move or press a flight key to take control", 5_000);
+    await googleRealityController?.startOrbit();
+    return;
+  }
+  setLighting(map, "golden");
+  let shotIndex = 0;
+  const playShot = () => {
+    if (!cinematicTourActive) return;
+    const shot = CINEMATIC_SHOTS[shotIndex % CINEMATIC_SHOTS.length];
+    map.flyTo({ ...shot, curve: 1.08, speed: 0.34, essential: false });
+    elements.renderStatus.textContent = "CINEMATIC";
+    cinematicTourTimer = window.setTimeout(() => {
+      shotIndex += 1;
+      playShot();
+    }, shot.duration + 900);
+  };
+  showToast("Cinematic tour · move or press a flight key to take control", 5_000);
+  playShot();
 }
 
 function attachFlightControls(map) {
@@ -1035,6 +1417,7 @@ function attachFlightControls(map) {
     if (tagName === "INPUT" || tagName === "BUTTON" || tagName === "A") return;
     if (!controlKeys.has(event.code)) return;
     event.preventDefault();
+    stopCinematicTour(map);
     held.add(event.code);
     elements.renderStatus.textContent = "MANUAL FLIGHT";
   });
@@ -1052,6 +1435,11 @@ function attachFlightControls(map) {
       const climb = Number(held.has("KeyR")) - Number(held.has("KeyF"));
       const tilt = Number(held.has("KeyT")) - Number(held.has("KeyG"));
       const boost = held.has("ShiftLeft") || held.has("ShiftRight");
+      if (activeRealityMode === "google" && googleRealityController?.initialized) {
+        googleRealityController.move({ forward, strafe, yaw, climb, tilt, boost }, deltaSeconds);
+        window.requestAnimationFrame(frame);
+        return;
+      }
       const speed = flightSpeedForZoom(map.getZoom(), boost);
       const center = moveCenter(map.getCenter(), map.getBearing(), forward * speed * deltaSeconds, strafe * speed * deltaSeconds);
 
@@ -1114,8 +1502,46 @@ function attachPopupInteractions(map) {
 }
 
 function attachUi(map) {
+  document.querySelectorAll("[data-reality-mode]").forEach((button) => {
+    button.addEventListener("click", () => setRealityMode(map, button.dataset.realityMode));
+  });
+
   document.querySelectorAll("[data-preset]").forEach((button) => {
-    button.addEventListener("click", () => flyToPreset(map, button.dataset.preset));
+    button.addEventListener("click", () => {
+      stopCinematicTour(map);
+      flyToPreset(map, button.dataset.preset);
+    });
+  });
+
+  document.querySelector("#cinematic-tour").addEventListener("click", () => {
+    if (cinematicTourActive) stopCinematicTour(map, true);
+    else startCinematicTour(map);
+  });
+  map.getCanvas().addEventListener("pointerdown", () => stopCinematicTour(map));
+  elements.googleReality.addEventListener("pointerdown", () => stopCinematicTour(map));
+
+  elements.openStreetView.addEventListener("click", async () => {
+    const ready = await setRealityMode(map, "google", false);
+    if (!ready) return;
+    stopCinematicTour(map);
+    await flyToPreset(map, "oldcity", false);
+    elements.streetViewShell.hidden = false;
+    document.body.classList.add("street-view-open");
+    try {
+      const visible = await googleRealityController.showOldCityPrimeStreetView();
+      if (visible) showToast("Official Google Street View · Old City Prime · 215 S Main St", 5_000);
+    } catch (error) {
+      googleRealityController.hideStreetView();
+      elements.streetViewShell.hidden = true;
+      document.body.classList.remove("street-view-open");
+      console.error("Google Street View failed to initialize", error);
+      showToast("Google Street View could not connect · try again in a moment", 5_000);
+    }
+  });
+  elements.closeStreetView.addEventListener("click", () => {
+    googleRealityController?.hideStreetView();
+    elements.streetViewShell.hidden = true;
+    document.body.classList.remove("street-view-open");
   });
 
   document.querySelectorAll("[data-layer-toggle]").forEach((input) => {
@@ -1127,8 +1553,10 @@ function attachUi(map) {
   });
 
   document.querySelector("#reset-scene").addEventListener("click", () => {
+    stopCinematicTour(map);
     inferredTreesAutoHidden = false;
     lidarTreeLayer?.setReduced(false);
+    trafficLayer?.setReduced(false);
     document.querySelectorAll("[data-layer-toggle]").forEach((input) => {
       input.checked = input.dataset.layerToggle !== "terrain";
       setLayerGroup(map, input.dataset.layerToggle, input.checked);
@@ -1170,8 +1598,9 @@ function attachPerformanceReadout(map) {
         inferredTreesAutoHidden = true;
         safeLayout(map, "lima-tree-crowns-inferred", "visibility", "none");
         lidarTreeLayer?.setReduced(true);
+        trafficLayer?.setReduced(true);
         elements.renderStatus.textContent = "ADAPTIVE";
-        showToast("Adaptive detail reduced distant tree geometry to keep flight smooth", 4_800);
+        showToast("Adaptive detail reduced distant canopy and traffic to keep flight smooth", 4_800);
       }
     }
     window.requestAnimationFrame(measureFrame);
@@ -1235,25 +1664,41 @@ function initializeMap() {
       .map((layer) => layer.id);
     styleBaseMap(map, "day");
     try {
-      const treeLoad = Promise.all([loadTreeData(), import("./lib/tree-layer.js")]).catch((error) => {
-        console.warn("Measured tree inventory unavailable; retaining fallback canopy", error);
+      const cinematicLoad = Promise.all([
+        loadTreeData(),
+        loadTrafficData(),
+        loadFacadeData(),
+        import("./lib/traffic-layer.js"),
+      ]).catch((error) => {
+        console.warn("Cinematic traffic, canopy, and facade detail unavailable; retaining native fallback", error);
         return null;
       });
-      const detailData = await loadDetailData();
-      addLimaLayers(map, detailData);
-      const treeResources = await treeLoad;
-      if (treeResources) {
-        const [treeData, { createTreeLayer }] = treeResources;
-        lidarTreeLayer = createTreeLayer(treeData.trees);
-        lidarTreeLayer.setTheme(activeLightMode);
-        lidarTreeLayer.addTo(map, layerAnchor(map));
+      const [detailData, rooftopData] = await Promise.all([loadDetailData(), loadRooftopData()]);
+      addLimaLayers(map, detailData, rooftopData);
+      const cinematicResources = await cinematicLoad;
+      if (cinematicResources) {
+        const [treeData, trafficData, facadeData, { createCinematicLayer }] = cinematicResources;
+        trafficLayer = createCinematicLayer(trafficData, treeData.trees, facadeData);
+        trafficLayer.addTo(map, layerAnchor(map));
+        trafficLayer.setTheme(activeLightMode);
+        lidarTreeLayer = {
+          setTheme() {},
+          setVisible(visible) {
+            trafficLayer.setTreeVisible(visible);
+          },
+          setReduced(reduced) {
+            trafficLayer.setReduced(reduced);
+          },
+        };
         for (const id of ["lima-tree-trunks", "lima-tree-crowns-mapped", "lima-tree-crowns-inferred"]) {
           safeLayout(map, id, "visibility", "none");
         }
       }
       loaded = true;
-      elements.renderStatus.textContent = "READY";
-      updateCameraReadout(map);
+      if (activeRealityMode === "open") {
+        elements.renderStatus.textContent = "OPEN DATA READY";
+        updateCameraReadout(map);
+      }
       attachPopupInteractions(map);
       map.once("idle", dismissLoading);
     } catch (error) {
@@ -1265,18 +1710,24 @@ function initializeMap() {
   });
 
   map.on("movestart", () => {
-    if (loaded) elements.renderStatus.textContent = inferredTreesAutoHidden ? "ADAPTIVE" : "FLYING";
+    if (loaded && activeRealityMode === "open") elements.renderStatus.textContent = inferredTreesAutoHidden ? "ADAPTIVE" : "FLYING";
   });
   map.on("move", () => {
-    updateCameraReadout(map);
+    if (activeRealityMode === "open") updateCameraReadout(map);
     syncLabelVisibility(map);
   });
   map.on("moveend", () => {
-    if (loaded) elements.renderStatus.textContent = inferredTreesAutoHidden ? "ADAPTIVE" : "READY";
+    if (loaded && activeRealityMode === "open") {
+      elements.renderStatus.textContent = inferredTreesAutoHidden ? "ADAPTIVE" : "OPEN DATA READY";
+    }
   });
   map.on("error", (event) => {
-    console.warn("Map resource error", event.error || event);
-    if (!loaded) elements.renderStatus.textContent = "RETRYING";
+    const resourceError = event.error || event;
+    const resourceDetail = resourceError?.message || resourceError?.url || resourceError?.status || "unknown resource failure";
+    const cancelledTileRequest = loaded && /Failed to fetch \(0\)|AbortError|request (?:aborted|cancelled)/i.test(resourceDetail);
+    if (cancelledTileRequest) console.debug("Map tile request cancelled during a camera or page transition");
+    else console.warn(`Map resource error: ${resourceDetail}`);
+    if (!loaded && activeRealityMode === "open") elements.renderStatus.textContent = "RETRYING";
   });
 
   window.setTimeout(() => {
@@ -1294,26 +1745,52 @@ function initializeMap() {
 
 const map = initializeMap();
 
+window.__LIMA_3D__ = { map, presets: PRESETS, googleConfigured: false };
+if (map) {
+  initializeRealityMode(map).catch((error) => {
+    console.error("Reality mode bootstrap failed", error);
+    elements.googleModeStatus.textContent = "RETRY";
+  });
+}
+
 Promise.all([
   fetchJson(`${DATA_BASE}lima-metadata.json`),
   fetchJson(`${DATA_BASE}lima-buildings-metadata.json`),
   fetchJson(`${DATA_BASE}lima-trees-metadata.json`),
+  fetchJson(`${DATA_BASE}lima-traffic-metadata.json`),
+  fetchJson(`${DATA_BASE}lima-rooftops-metadata.json`),
+  fetchJson(`${DATA_BASE}lima-facades-metadata.json`),
 ])
-  .then(([detailMetadata, buildingMetadata, treeMetadata]) => {
+  .then(([detailMetadata, buildingMetadata, treeMetadata, trafficMetadata, rooftopMetadata, facadeMetadata]) => {
     const detailCounts = detailMetadata.counts;
     const buildingCounts = buildingMetadata.counts;
     const treeCounts = treeMetadata.counts;
     const strong = document.createElement("strong");
     strong.textContent = treeCounts.lidarTreeCrowns.toLocaleString();
     elements.sourceSummary.replaceChildren(strong, " LiDAR canopy objects");
+    const trafficSummary = document.querySelector("#traffic-summary");
+    trafficSummary.replaceChildren(
+      Object.assign(document.createElement("strong"), {
+        textContent: trafficMetadata.counts.routes.toLocaleString(),
+      }),
+      " drivable route segments",
+    );
+    const facadeSummary = document.querySelector("#facade-summary");
+    facadeSummary.replaceChildren(
+      Object.assign(document.createElement("strong"), {
+        textContent: facadeMetadata.counts.streetFacingWalls.toLocaleString(),
+      }),
+      " individualized street facades",
+    );
     elements.renderStatus.title = [
       `${buildingCounts.source_heights.toLocaleString()} source building heights`,
       `${treeCounts.lidarTreeCrowns.toLocaleString()} LiDAR canopy objects`,
       `${detailCounts.pedestrianWays.toLocaleString()} pedestrian ways`,
+      `${trafficMetadata.counts.routes.toLocaleString()} traffic routes`,
+      `${rooftopMetadata.counts.features.toLocaleString()} rooftop details`,
+      `${facadeMetadata.counts.streetFacingWalls.toLocaleString()} street-facing facade layouts`,
     ].join(" · ");
   })
   .catch((error) => console.debug(error));
 
 if (window.innerWidth < 760) openPanel(false);
-
-window.__LIMA_3D__ = { map, presets: PRESETS };

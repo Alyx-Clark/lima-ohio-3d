@@ -35,6 +35,21 @@
         role="application"
         aria-label="Interactive three-dimensional map of Lima, Ohio"
       ></div>
+      <div id="google-reality" class="google-reality" hidden></div>
+
+      <section id="street-view-shell" class="street-view-shell" aria-label="Google Street View at Old City Prime" hidden>
+        <header class="street-view-shell__head">
+          <div>
+            <span>GOOGLE STREET VIEW · <b id="street-view-status">READY</b></span>
+            <strong>Old City Prime</strong>
+            <small>215 S Main St · Lima, Ohio</small>
+          </div>
+          <button id="close-street-view" class="icon-button" type="button" aria-label="Close Street View">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
+          </button>
+        </header>
+        <div id="street-view-map" class="street-view-map"></div>
+      </section>
 
       <div class="atmosphere" aria-hidden="true"></div>
 
@@ -85,10 +100,34 @@
           </button>
         </div>
 
+        <section class="control-section reality-section" aria-labelledby="reality-heading">
+          <div class="section-heading">
+            <h2 id="reality-heading">Reality engine</h2>
+            <span>LIVE SOURCES</span>
+          </div>
+          <div class="reality-switch" role="group" aria-label="Reality renderer">
+            <button class="reality-option" type="button" data-reality-mode="google" aria-pressed="false">
+              <span class="reality-option__icon" aria-hidden="true">G</span>
+              <span><strong>Google Reality</strong><small>Photorealistic 3D tiles</small></span>
+              <b id="google-mode-status">CHECKING</b>
+            </button>
+            <button class="reality-option is-active" type="button" data-reality-mode="open" aria-pressed="true">
+              <span class="reality-option__icon" aria-hidden="true">O</span>
+              <span><strong>Open reconstruction</strong><small>Fast measured fallback</small></span>
+              <b>READY</b>
+            </button>
+          </div>
+          <button id="open-street-view" class="street-view-button" type="button">
+            <span aria-hidden="true">360°</span>
+            <span><strong>Old City Prime · Street View</strong><small>Official ground-level Google imagery</small></span>
+            <b aria-hidden="true">OPEN</b>
+          </button>
+        </section>
+
         <section class="control-section" aria-labelledby="places-heading">
           <div class="section-heading">
             <h2 id="places-heading">Camera presets</h2>
-            <span id="preset-index">01 / 06</span>
+            <span id="preset-index">01 / 07</span>
           </div>
           <div id="preset-list" class="preset-list">
             <button class="preset is-active" type="button" data-preset="overview">
@@ -101,27 +140,37 @@
               <span><strong>Downtown</strong><small>Market &amp; Main</small></span>
               <span class="preset__arrow" aria-hidden="true">↗</span>
             </button>
-            <button class="preset" type="button" data-preset="museum">
+            <button class="preset preset--landmark" type="button" data-preset="oldcity">
               <span class="preset__number">03</span>
+              <span><strong>Old City Prime</strong><small>215 South Main Street</small></span>
+              <span class="preset__arrow" aria-hidden="true">↗</span>
+            </button>
+            <button class="preset" type="button" data-preset="museum">
+              <span class="preset__number">04</span>
               <span><strong>Allen County Museum</strong><small>West Market Street</small></span>
               <span class="preset__arrow" aria-hidden="true">↗</span>
             </button>
             <button class="preset" type="button" data-preset="schoonover">
-              <span class="preset__number">04</span>
+              <span class="preset__number">05</span>
               <span><strong>Schoonover Park</strong><small>Lake &amp; greenway</small></span>
               <span class="preset__arrow" aria-hidden="true">↗</span>
             </button>
             <button class="preset" type="button" data-preset="unoh">
-              <span class="preset__number">05</span>
+              <span class="preset__number">06</span>
               <span><strong>UNOH</strong><small>North Cable Road</small></span>
               <span class="preset__arrow" aria-hidden="true">↗</span>
             </button>
             <button class="preset" type="button" data-preset="street">
-              <span class="preset__number">06</span>
-              <span><strong>Street level</strong><small>Low downtown approach</small></span>
+              <span class="preset__number">07</span>
+              <span><strong>Street level</strong><small>Named downtown storefronts</small></span>
               <span class="preset__arrow" aria-hidden="true">↗</span>
             </button>
           </div>
+          <button id="cinematic-tour" class="cinematic-button" type="button" aria-pressed="false">
+            <i aria-hidden="true"><span></span></i>
+            <span class="cinematic-button__copy"><strong>CINEMATIC TOUR</strong><small>DIRECTOR-CURATED FLYTHROUGH</small></span>
+            <b aria-hidden="true">PLAY</b>
+          </button>
         </section>
 
         <section class="control-section" aria-labelledby="layers-heading">
@@ -133,6 +182,11 @@
             <label class="switch-row">
               <span><i class="legend-swatch legend-swatch--building"></i>Buildings</span>
               <input type="checkbox" data-layer-toggle="buildings" checked>
+              <i class="switch" aria-hidden="true"></i>
+            </label>
+            <label class="switch-row">
+              <span><i class="legend-swatch legend-swatch--facade"></i>Street façades</span>
+              <input type="checkbox" data-layer-toggle="facades" checked>
               <i class="switch" aria-hidden="true"></i>
             </label>
             <label class="switch-row">
@@ -165,6 +219,11 @@
               <input type="checkbox" data-layer-toggle="furniture" checked>
               <i class="switch" aria-hidden="true"></i>
             </label>
+            <label class="switch-row">
+              <span><i class="legend-swatch legend-swatch--traffic"></i>Cinematic traffic</span>
+              <input type="checkbox" data-layer-toggle="traffic" checked>
+              <i class="switch" aria-hidden="true"></i>
+            </label>
           </div>
         </section>
 
@@ -188,6 +247,8 @@
             <span><strong>24,179</strong> source building heights</span>
             <span id="source-summary"><strong>LiDAR</strong> individual canopy loading</span>
             <span><strong>Aerial</strong> photographic ground surface</span>
+            <span id="traffic-summary"><strong>Traffic</strong> route network loading</span>
+            <span id="facade-summary"><strong>Façades</strong> street detail loading</span>
           </div>
         </section>
 
@@ -214,12 +275,14 @@
 
       <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-      <footer class="attribution">
+      <footer id="open-attribution" class="attribution">
         Map data ©
         <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a>
         · <a href="https://overturemaps.org" target="_blank" rel="noreferrer">Overture Maps</a>
         · imagery © <a href="https://www.esri.com" target="_blank" rel="noreferrer">Esri</a> and sources
         · LiDAR <a href="https://www.usgs.gov/3d-elevation-program" target="_blank" rel="noreferrer">USGS 3DEP</a>
+        · <a href="/lima-3d/terms.html">Terms</a>
+        · <a href="/lima-3d/privacy.html">Privacy</a>
       </footer>
     </main>
     <noscript>This explorer requires JavaScript and WebGL.</noscript>
