@@ -53,6 +53,9 @@ test("Google reality is licensed, deferred, and credential-safe", () => {
   assert.match(packageManifest, /"@googlemaps\/js-api-loader":\s*"2\.1\.1"/);
   assert.match(googleRealityRenderer, /importLibrary\("maps3d"\)/);
   assert.match(googleRealityRenderer, /StreetViewPanorama/);
+  assert.match(googleRealityRenderer, /async showOldCityPrimeStreetView\(\)/);
+  assert.match(googleRealityRenderer, /panoramaPromise = importLibrary\("streetView"\)/);
+  assert.doesNotMatch(googleRealityRenderer, /Promise\.all\(\[[\s\S]*importLibrary\("streetView"\)/);
   assert.match(googleRealityRenderer, /OLD_CITY_PRIME_STREET_VIEW/);
   assert.doesNotMatch(runtimeConfig, /AIza[0-9A-Za-z_-]{30,}/);
   assert.match(terms, /Google Maps\/Google Earth Additional Terms/);

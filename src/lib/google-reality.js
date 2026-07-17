@@ -141,12 +141,52 @@ export function createGoogleRealityController({
 }) {
   let map3d;
   let panorama;
+  let panoramaPromise;
   let camera = copyCamera(GOOGLE_REALITY_PRESETS.overview);
   let initialized = false;
   let streetVisible = false;
 
   function publishCamera() {
     onCamera(copyCamera(camera));
+  }
+
+  async function ensureStreetView() {
+    if (panorama) return panorama;
+    if (!panoramaPromise) {
+      panoramaPromise = importLibrary("streetView")
+        .then(({ StreetViewPanorama }) => {
+          const nextPanorama = new StreetViewPanorama(streetContainer, {
+            position: OLD_CITY_PRIME_STREET_VIEW.position,
+            pov: OLD_CITY_PRIME_STREET_VIEW.pov,
+            zoom: OLD_CITY_PRIME_STREET_VIEW.zoom,
+            visible: false,
+            addressControl: true,
+            clickToGo: true,
+            fullscreenControl: true,
+            imageDateControl: true,
+            linksControl: true,
+            motionTracking: false,
+            motionTrackingControl: false,
+            panControl: true,
+            zoomControl: true,
+          });
+          nextPanorama.addListener("status_changed", () =>
+            onStreetStatus(nextPanorama.getStatus?.() || "UNKNOWN"),
+          );
+          nextPanorama.addListener("position_changed", () => {
+            const position = nextPanorama.getPosition?.();
+            if (!position) return;
+            onStreetStatus("LIVE", { lat: position.lat(), lng: position.lng() });
+          });
+          panorama = nextPanorama;
+          return nextPanorama;
+        })
+        .catch((error) => {
+          panoramaPromise = undefined;
+          throw error;
+        });
+    }
+    return panoramaPromise;
   }
 
   return {
@@ -168,10 +208,7 @@ export function createGoogleRealityController({
         v: "beta",
         authReferrerPolicy: "origin",
       });
-      const [{ Map3DElement }, { StreetViewPanorama }] = await Promise.all([
-        importLibrary("maps3d"),
-        importLibrary("streetView"),
-      ]);
+      const { Map3DElement } = await importLibrary("maps3d");
 
       const options = {
         ...copyCamera(camera),
@@ -190,27 +227,6 @@ export function createGoogleRealityController({
       map3d.setAttribute("aria-label", "Google photorealistic three-dimensional map of Lima, Ohio");
       mapContainer.replaceChildren(map3d);
 
-      panorama = new StreetViewPanorama(streetContainer, {
-        position: OLD_CITY_PRIME_STREET_VIEW.position,
-        pov: OLD_CITY_PRIME_STREET_VIEW.pov,
-        zoom: OLD_CITY_PRIME_STREET_VIEW.zoom,
-        visible: false,
-        addressControl: true,
-        clickToGo: true,
-        fullscreenControl: true,
-        imageDateControl: true,
-        linksControl: true,
-        motionTracking: false,
-        motionTrackingControl: false,
-        panControl: true,
-        zoomControl: true,
-      });
-      panorama.addListener("status_changed", () => onStreetStatus(panorama.getStatus?.() || "UNKNOWN"));
-      panorama.addListener("position_changed", () => {
-        const position = panorama.getPosition?.();
-        if (!position) return;
-        onStreetStatus("LIVE", { lat: position.lat(), lng: position.lng() });
-      });
       initialized = true;
       onStatus("GOOGLE REALITY READY");
       publishCamera();
@@ -246,14 +262,19 @@ export function createGoogleRealityController({
       publishCamera();
       return true;
     },
-    showOldCityPrimeStreetView() {
-      if (!panorama) return false;
-      panorama.setPosition(OLD_CITY_PRIME_STREET_VIEW.position);
-      panorama.setPov(OLD_CITY_PRIME_STREET_VIEW.pov);
-      panorama.setZoom(OLD_CITY_PRIME_STREET_VIEW.zoom);
-      panorama.setVisible(true);
+    async showOldCityPrimeStreetView() {
+      if (!initialized) return false;
       streetVisible = true;
       onStreetStatus("LOADING");
+      const nextPanorama = await ensureStreetView();
+      if (!streetVisible) {
+        nextPanorama.setVisible(false);
+        return false;
+      }
+      nextPanorama.setPosition(OLD_CITY_PRIME_STREET_VIEW.position);
+      nextPanorama.setPov(OLD_CITY_PRIME_STREET_VIEW.pov);
+      nextPanorama.setZoom(OLD_CITY_PRIME_STREET_VIEW.zoom);
+      nextPanorama.setVisible(true);
       return true;
     },
     hideStreetView() {

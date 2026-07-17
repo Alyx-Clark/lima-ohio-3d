@@ -1527,8 +1527,16 @@ function attachUi(map) {
     await flyToPreset(map, "oldcity", false);
     elements.streetViewShell.hidden = false;
     document.body.classList.add("street-view-open");
-    googleRealityController.showOldCityPrimeStreetView();
-    showToast("Official Google Street View · Old City Prime · 215 S Main St", 5_000);
+    try {
+      const visible = await googleRealityController.showOldCityPrimeStreetView();
+      if (visible) showToast("Official Google Street View · Old City Prime · 215 S Main St", 5_000);
+    } catch (error) {
+      googleRealityController.hideStreetView();
+      elements.streetViewShell.hidden = true;
+      document.body.classList.remove("street-view-open");
+      console.error("Google Street View failed to initialize", error);
+      showToast("Google Street View could not connect · try again in a moment", 5_000);
+    }
   });
   elements.closeStreetView.addEventListener("click", () => {
     googleRealityController?.hideStreetView();
