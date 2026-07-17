@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 
+import { createFacadeSystem } from "./facade-detail.js";
 import { chunkTreeInventory, localMeters } from "./tree-geometry.js";
 
 const CENTER = [-84.105006, 40.7399785];
@@ -389,7 +390,7 @@ function updateVehicleMeshes(meshes, vehicles, elapsedSeconds) {
   if (meshes.roof.instanceColor) meshes.roof.instanceColor.needsUpdate = true;
 }
 
-export function createCinematicLayer(trafficData, treeInventory = []) {
+export function createCinematicLayer(trafficData, treeInventory = [], facadeData = {}) {
   const routes = prepareTrafficRoutes(trafficData.routes || []);
   const treeChunks = chunkTreeInventory(treeInventory);
   let map;
@@ -398,6 +399,7 @@ export function createCinematicLayer(trafficData, treeInventory = []) {
   let camera;
   let meshes;
   let treeMeshes;
+  let facadeSystem;
   let vehicles = [];
   let visibleTrees = [];
   let updateTimer;
@@ -406,6 +408,7 @@ export function createCinematicLayer(trafficData, treeInventory = []) {
   let theme = "day";
   let trafficEnabled = true;
   let treesEnabled = true;
+  let facadesEnabled = true;
   let reduced = false;
 
   const origin = window.maplibregl.MercatorCoordinate.fromLngLat(CENTER, 0);
@@ -430,13 +433,15 @@ export function createCinematicLayer(trafficData, treeInventory = []) {
       scene.add(sun);
       meshes = createVehicleMeshes(scene);
       treeMeshes = createTreeMeshes(scene);
+      facadeSystem = createFacadeSystem(scene, facadeData);
       renderer = new THREE.WebGLRenderer({ canvas: map.getCanvas(), context: gl, antialias: true });
       renderer.autoClear = false;
     },
     render(gl, args) {
       const hasVehicles = trafficEnabled && vehicles.length > 0;
       const hasTrees = treesEnabled && visibleTrees.length > 0;
-      if (!renderer || (!hasVehicles && !hasTrees)) return;
+      const hasFacades = facadesEnabled && (facadeSystem?.visibleCount || 0) > 0;
+      if (!renderer || (!hasVehicles && !hasTrees && !hasFacades)) return;
       if (hasVehicles) updateVehicleMeshes(meshes, vehicles, performance.now() / 1_000);
       const mapMatrix = new THREE.Matrix4().fromArray(args.defaultProjectionData.mainMatrix);
       camera.projectionMatrix = mapMatrix.multiply(anchorMatrix);
@@ -450,6 +455,7 @@ export function createCinematicLayer(trafficData, treeInventory = []) {
           mesh.material.dispose();
         }
       }
+      facadeSystem?.dispose();
       renderer?.dispose();
     },
   };
@@ -463,6 +469,9 @@ export function createCinematicLayer(trafficData, treeInventory = []) {
     },
     get visibleTreeCount() {
       return visibleTrees.length;
+    },
+    get visibleFacadeCount() {
+      return facadeSystem?.visibleCount || 0;
     },
     addTo(nextMap, beforeId) {
       map = nextMap;
@@ -482,6 +491,7 @@ export function createCinematicLayer(trafficData, treeInventory = []) {
       vehicles = trafficEnabled ? vehicleCandidates(map, routes, reduced) : [];
       visibleTrees = treesEnabled ? treeCandidates(map, treeChunks, reduced) : [];
       if (treeMeshes) updateTreeMeshes(treeMeshes, visibleTrees, theme);
+      facadeSystem?.update(map, reduced);
       map?.triggerRepaint();
     },
     setVisible(nextVisible) {
@@ -491,6 +501,11 @@ export function createCinematicLayer(trafficData, treeInventory = []) {
     setTreeVisible(nextVisible) {
       treesEnabled = nextVisible;
       this.update();
+    },
+    setFacadeVisible(nextVisible) {
+      facadesEnabled = nextVisible;
+      facadeSystem?.setVisible(nextVisible, map);
+      map?.triggerRepaint();
     },
     setReduced(nextReduced) {
       reduced = nextReduced;
@@ -512,6 +527,7 @@ export function createCinematicLayer(trafficData, treeInventory = []) {
       meshes.materials.headlightMaterial.emissiveIntensity = settings.head;
       meshes.materials.tailLightMaterial.emissiveIntensity = settings.tail;
       if (treeMeshes) updateTreeMeshes(treeMeshes, visibleTrees, theme);
+      facadeSystem?.setTheme(theme, map);
     },
     remove() {
       window.clearTimeout(updateTimer);

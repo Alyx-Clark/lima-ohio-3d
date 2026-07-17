@@ -17,7 +17,7 @@ const DATA_BASE = `${import.meta.env.BASE_URL}data/`;
 const BUILDINGS_PM_TILES = new URL(`${DATA_BASE}lima-buildings.pmtiles`, window.location.href).href;
 const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 const FACADE_TYPES = ["residential", "urban", "industrial"];
-const MATERIAL_VARIANTS = [0, 1, 2, 3, 4];
+const MATERIAL_VARIANTS = [0, 1, 2, 3, 4, 5, 6, 7];
 const HIGH_PITCH_CULLED_LABELS = new Set([
   "highway-shield-non-us",
   "highway-shield-us-interstate",
@@ -65,10 +65,10 @@ const PRESETS = {
     duration: 2_450,
   },
   street: {
-    center: [-84.10472, 40.73952],
-    zoom: 18.35,
+    center: [-84.10166, 40.74057],
+    zoom: 18.55,
     pitch: 81,
-    bearing: 3,
+    bearing: 180,
     duration: 2_600,
   },
 };
@@ -148,6 +148,8 @@ let activeLightMode = "day";
 let labelsVisible = true;
 let highPitchLabelsCulled = false;
 let trafficLayer;
+let buildingsVisible = true;
+let facadesVisible = true;
 let cinematicTourActive = false;
 let cinematicTourTimer;
 
@@ -187,6 +189,7 @@ const loadDetailData = () => loadCompressedJson("lima-detail");
 const loadTreeData = () => loadCompressedJson("lima-trees");
 const loadTrafficData = () => loadCompressedJson("lima-traffic");
 const loadRooftopData = () => loadCompressedJson("lima-rooftops");
+const loadFacadeData = () => loadCompressedJson("lima-facades");
 function safePaint(map, layerId, property, value) {
   if (!map.getLayer(layerId)) return;
   try {
@@ -237,56 +240,126 @@ function createFacadePattern(facadeType, mode, variant) {
   context.fillRect(0, 0, 96, 96);
 
   const materialTints = {
-    day: ["rgba(255,255,255,0)", "rgba(116,70,45,0.13)", "rgba(247,231,198,0.17)", "rgba(76,101,104,0.13)", "rgba(96,70,57,0.1)"],
-    golden: ["rgba(255,255,255,0)", "rgba(130,67,38,0.16)", "rgba(246,215,167,0.15)", "rgba(77,91,94,0.12)", "rgba(112,67,45,0.12)"],
-    night: ["rgba(255,255,255,0)", "rgba(31,20,18,0.22)", "rgba(90,86,70,0.14)", "rgba(27,49,53,0.2)", "rgba(53,34,29,0.16)"],
+    day: [
+      "rgba(255,255,255,0)",
+      "rgba(116,70,45,0.16)",
+      "rgba(247,231,198,0.2)",
+      "rgba(76,101,104,0.15)",
+      "rgba(96,70,57,0.12)",
+      "rgba(228,215,187,0.18)",
+      "rgba(72,88,92,0.16)",
+      "rgba(143,91,67,0.15)",
+    ],
+    golden: [
+      "rgba(255,255,255,0)",
+      "rgba(130,67,38,0.18)",
+      "rgba(246,215,167,0.17)",
+      "rgba(77,91,94,0.14)",
+      "rgba(112,67,45,0.14)",
+      "rgba(226,193,143,0.16)",
+      "rgba(70,78,82,0.15)",
+      "rgba(148,75,48,0.17)",
+    ],
+    night: [
+      "rgba(255,255,255,0)",
+      "rgba(31,20,18,0.24)",
+      "rgba(90,86,70,0.16)",
+      "rgba(27,49,53,0.22)",
+      "rgba(53,34,29,0.18)",
+      "rgba(77,68,49,0.18)",
+      "rgba(17,31,35,0.22)",
+      "rgba(60,27,21,0.2)",
+    ],
   };
   context.fillStyle = materialTints[mode][variant];
   context.fillRect(0, 0, 96, 96);
 
-  if (facadeType === "residential") {
+  const family = variant % 4;
+  if (facadeType === "residential" && family === 0) {
     context.strokeStyle = palette[1];
     context.globalAlpha = 0.34;
     context.lineWidth = 2;
-    const sidingSpacing = [12, 10, 14, 8, 12][variant];
+    const sidingSpacing = [12, 10, 14, 8, 11, 9, 13, 7][variant];
     for (let y = 8; y < 96; y += sidingSpacing) {
       context.beginPath();
       context.moveTo(0, y);
       context.lineTo(96, y);
       context.stroke();
     }
-    if (variant === 3) {
-      context.globalAlpha = 0.2;
-      for (let x = 0; x < 96; x += 12) {
-        context.beginPath();
-        context.moveTo(x, 0);
-        context.lineTo(x, 96);
-        context.stroke();
-      }
-    }
     context.globalAlpha = 1;
-  } else if (facadeType === "urban") {
-    context.strokeStyle = palette[3];
-    context.globalAlpha = 0.24;
+  } else if (facadeType === "residential" && family === 1) {
+    context.strokeStyle = palette[1];
+    context.globalAlpha = 0.3;
     context.lineWidth = 1;
-    for (let y = 0; y <= 96; y += 12) {
+    for (let y = 0; y <= 96; y += 8) {
       context.beginPath();
       context.moveTo(0, y);
       context.lineTo(96, y);
       context.stroke();
+      for (let x = (y / 8) % 2 ? 0 : -12; x <= 96; x += 24) {
+        context.beginPath();
+        context.moveTo(x, y);
+        context.lineTo(x, Math.min(96, y + 8));
+        context.stroke();
+      }
     }
-    for (let x = variant % 2 ? 12 : 0; x <= 96; x += 24) {
+    context.globalAlpha = 1;
+  } else if (facadeType === "residential" && family === 2) {
+    context.fillStyle = mode === "night" ? "rgba(138,146,139,0.08)" : "rgba(255,255,255,0.18)";
+    for (let index = 0; index < 70; index += 1) {
+      context.fillRect((index * 37 + variant * 11) % 96, (index * 53 + variant * 7) % 96, 1, 1);
+    }
+  } else if (facadeType === "residential") {
+    context.strokeStyle = palette[1];
+    context.globalAlpha = 0.27;
+    context.lineWidth = 2;
+    for (let x = 0; x <= 96; x += variant === 3 ? 12 : 9) {
       context.beginPath();
       context.moveTo(x, 0);
       context.lineTo(x, 96);
       context.stroke();
     }
     context.globalAlpha = 1;
-  } else {
+  } else if (facadeType === "urban" && (family === 0 || family === 1)) {
+    context.strokeStyle = palette[3];
+    context.globalAlpha = family === 0 ? 0.26 : 0.19;
+    context.lineWidth = 1;
+    const course = family === 0 ? 10 : 16;
+    for (let y = 0; y <= 96; y += course) {
+      context.beginPath();
+      context.moveTo(0, y);
+      context.lineTo(96, y);
+      context.stroke();
+    }
+    for (let x = variant % 2 ? course : 0; x <= 96; x += course * 2) {
+      context.beginPath();
+      context.moveTo(x, 0);
+      context.lineTo(x, 96);
+      context.stroke();
+    }
+    context.globalAlpha = 1;
+  } else if (facadeType === "urban") {
+    context.strokeStyle = palette[1];
+    context.globalAlpha = 0.23;
+    context.lineWidth = 2;
+    for (let x = 0; x <= 96; x += family === 2 ? 24 : 14) {
+      context.beginPath();
+      context.moveTo(x, 0);
+      context.lineTo(x, 96);
+      context.stroke();
+    }
+    for (let y = 0; y <= 96; y += family === 2 ? 24 : 18) {
+      context.beginPath();
+      context.moveTo(0, y);
+      context.lineTo(96, y);
+      context.stroke();
+    }
+    context.globalAlpha = 1;
+  } else if (family === 0 || family === 2) {
     context.strokeStyle = palette[1];
     context.globalAlpha = 0.4;
     context.lineWidth = 2;
-    const panelSpacing = [16, 12, 20, 24, 14][variant];
+    const panelSpacing = [16, 12, 20, 24, 14, 18, 22, 10][variant];
     for (let x = 0; x <= 96; x += panelSpacing) {
       context.beginPath();
       context.moveTo(x, 0);
@@ -294,47 +367,21 @@ function createFacadePattern(facadeType, mode, variant) {
       context.stroke();
     }
     context.globalAlpha = 1;
+  } else {
+    context.strokeStyle = palette[3];
+    context.globalAlpha = 0.24;
+    context.lineWidth = 1;
+    for (let x = 0; x <= 96; x += 24) {
+      for (let y = 0; y <= 96; y += 16) context.strokeRect(x, y, 24, 16);
+    }
+    context.globalAlpha = 1;
   }
 
-  const windows = [
-    [9, 17, 30, 30],
-    [57, 17, 30, 30],
-    [9, 63, 30, 24],
-    [57, 63, 30, 24],
-  ];
-  windows.forEach(([x, y, width, height], windowIndex) => {
-    context.fillStyle = palette[1];
-    context.fillRect(x, y, width, height);
-    const inset = 3;
-    const lit = mode === "night" && (windowIndex + variant * 2) % 4 !== 1;
-    const glass = context.createLinearGradient(x + inset, y + inset, x + width - inset, y + height - inset);
-    if (lit) {
-      glass.addColorStop(0, "#7c6238");
-      glass.addColorStop(0.45, "#e1b863");
-      glass.addColorStop(1, "#765f3a");
-    } else {
-      glass.addColorStop(0, palette[2]);
-      glass.addColorStop(0.5, mode === "night" ? "#17272b" : "#70858a");
-      glass.addColorStop(1, palette[2]);
-    }
-    context.fillStyle = glass;
-    context.fillRect(x + inset, y + inset, width - inset * 2, height - inset * 2);
-    context.strokeStyle = mode === "night" ? "rgba(15,23,24,0.78)" : "rgba(235,239,231,0.55)";
-    context.lineWidth = 1;
-    context.beginPath();
-    context.moveTo(x + width / 2, y + inset);
-    context.lineTo(x + width / 2, y + height - inset);
-    context.moveTo(x + inset, y + height / 2);
-    context.lineTo(x + width - inset, y + height / 2);
-    context.stroke();
-    context.fillStyle = mode === "night" ? "rgba(3,9,10,0.65)" : "rgba(46,51,49,0.32)";
-    context.fillRect(x - 1, y + height, width + 2, 2);
-  });
-  if (facadeType === "residential") {
-    context.fillStyle = mode === "night" ? "#1b2423" : "#63584b";
-    context.fillRect(42, 66, 12, 30);
-    context.fillStyle = mode === "night" ? "#d8b66b" : "#bfc6be";
-    context.fillRect(50, 80, 2, 2);
+  context.fillStyle = mode === "night" ? "rgba(3,10,11,0.12)" : "rgba(42,35,30,0.1)";
+  for (let index = 0; index < 34; index += 1) {
+    const x = (index * 31 + variant * 17) % 96;
+    const y = (index * 47 + variant * 13) % 96;
+    context.fillRect(x, y, index % 6 === 0 ? 3 : 1, index % 5 === 0 ? 2 : 1);
   }
   context.globalAlpha = 1;
   return context.getImageData(0, 0, 96, 96);
@@ -346,9 +393,9 @@ function createRoofPattern(mode, variant) {
   canvas.height = 64;
   const context = canvas.getContext("2d", { alpha: false });
   const bases = {
-    day: ["#999083", "#756b62", "#a8aaa5", "#79685b", "#8e8170"],
-    golden: ["#9b8068", "#77594b", "#a59c89", "#805e49", "#927158"],
-    night: ["#414746", "#343838", "#4b5351", "#3c3938", "#45413e"],
+    day: ["#999083", "#756b62", "#a8aaa5", "#79685b", "#8e8170", "#686f70", "#a3957d", "#605954"],
+    golden: ["#9b8068", "#77594b", "#a59c89", "#805e49", "#927158", "#6c6b64", "#a38a67", "#665247"],
+    night: ["#414746", "#343838", "#4b5351", "#3c3938", "#45413e", "#303a3c", "#4a463e", "#302f2e"],
   };
   const seams = {
     day: "rgba(52,48,43,0.24)",
@@ -360,7 +407,7 @@ function createRoofPattern(mode, variant) {
   context.strokeStyle = seams[mode];
   context.lineWidth = 1;
 
-  if (variant === 2) {
+  if (variant % 4 === 2) {
     for (let x = 0; x <= 64; x += 8) {
       context.beginPath();
       context.moveTo(x, 0);
@@ -368,13 +415,13 @@ function createRoofPattern(mode, variant) {
       context.stroke();
     }
   } else {
-    for (let y = 0; y <= 64; y += variant === 1 ? 8 : 12) {
+    for (let y = 0; y <= 64; y += variant % 4 === 1 ? 8 : 12) {
       context.beginPath();
       context.moveTo(0, y);
       context.lineTo(64, y);
       context.stroke();
     }
-    if (variant === 0 || variant === 4) {
+    if (variant % 4 === 0) {
       for (let y = 0; y < 64; y += 12) {
         for (let x = (y / 12) % 2 ? -8 : 0; x < 64; x += 16) {
           context.beginPath();
@@ -398,7 +445,7 @@ function createRoofPattern(mode, variant) {
     context.fillRect((index * 29 + variant * 7) % 64, (index * 17 + variant * 5) % 64, 2, 1);
   }
 
-  if (variant === 3) {
+  if (variant % 4 === 3) {
     context.fillStyle = mode === "night" ? "#1d292b" : "#51636a";
     context.fillRect(10, 12, 15, 10);
     context.fillRect(39, 36, 11, 9);
@@ -1081,6 +1128,15 @@ function setLayerGroup(map, group, visible) {
   }
 
   if (group === "trees") lidarTreeLayer?.setVisible(visible);
+  if (group === "buildings") {
+    buildingsVisible = visible;
+    trafficLayer?.setFacadeVisible(buildingsVisible && facadesVisible);
+  }
+  if (group === "facades") {
+    facadesVisible = visible;
+    trafficLayer?.setFacadeVisible(buildingsVisible && facadesVisible);
+    return;
+  }
   if (group === "traffic") {
     trafficLayer?.setVisible(visible);
     return;
@@ -1427,16 +1483,21 @@ function initializeMap() {
       .map((layer) => layer.id);
     styleBaseMap(map, "day");
     try {
-      const cinematicLoad = Promise.all([loadTreeData(), loadTrafficData(), import("./lib/traffic-layer.js")]).catch((error) => {
-        console.warn("Cinematic traffic and canopy unavailable; retaining native fallback", error);
+      const cinematicLoad = Promise.all([
+        loadTreeData(),
+        loadTrafficData(),
+        loadFacadeData(),
+        import("./lib/traffic-layer.js"),
+      ]).catch((error) => {
+        console.warn("Cinematic traffic, canopy, and facade detail unavailable; retaining native fallback", error);
         return null;
       });
       const [detailData, rooftopData] = await Promise.all([loadDetailData(), loadRooftopData()]);
       addLimaLayers(map, detailData, rooftopData);
       const cinematicResources = await cinematicLoad;
       if (cinematicResources) {
-        const [treeData, trafficData, { createCinematicLayer }] = cinematicResources;
-        trafficLayer = createCinematicLayer(trafficData, treeData.trees);
+        const [treeData, trafficData, facadeData, { createCinematicLayer }] = cinematicResources;
+        trafficLayer = createCinematicLayer(trafficData, treeData.trees, facadeData);
         trafficLayer.addTo(map, layerAnchor(map));
         trafficLayer.setTheme(activeLightMode);
         lidarTreeLayer = {
@@ -1501,8 +1562,9 @@ Promise.all([
   fetchJson(`${DATA_BASE}lima-trees-metadata.json`),
   fetchJson(`${DATA_BASE}lima-traffic-metadata.json`),
   fetchJson(`${DATA_BASE}lima-rooftops-metadata.json`),
+  fetchJson(`${DATA_BASE}lima-facades-metadata.json`),
 ])
-  .then(([detailMetadata, buildingMetadata, treeMetadata, trafficMetadata, rooftopMetadata]) => {
+  .then(([detailMetadata, buildingMetadata, treeMetadata, trafficMetadata, rooftopMetadata, facadeMetadata]) => {
     const detailCounts = detailMetadata.counts;
     const buildingCounts = buildingMetadata.counts;
     const treeCounts = treeMetadata.counts;
@@ -1516,12 +1578,20 @@ Promise.all([
       }),
       " drivable route segments",
     );
+    const facadeSummary = document.querySelector("#facade-summary");
+    facadeSummary.replaceChildren(
+      Object.assign(document.createElement("strong"), {
+        textContent: facadeMetadata.counts.streetFacingWalls.toLocaleString(),
+      }),
+      " individualized street facades",
+    );
     elements.renderStatus.title = [
       `${buildingCounts.source_heights.toLocaleString()} source building heights`,
       `${treeCounts.lidarTreeCrowns.toLocaleString()} LiDAR canopy objects`,
       `${detailCounts.pedestrianWays.toLocaleString()} pedestrian ways`,
       `${trafficMetadata.counts.routes.toLocaleString()} traffic routes`,
       `${rooftopMetadata.counts.features.toLocaleString()} rooftop details`,
+      `${facadeMetadata.counts.streetFacingWalls.toLocaleString()} street-facing facade layouts`,
     ].join(" · ");
   })
   .catch((error) => console.debug(error));

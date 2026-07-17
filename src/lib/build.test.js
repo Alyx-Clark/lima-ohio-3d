@@ -6,6 +6,7 @@ const config = await readFile(new URL("../../vite.config.js", import.meta.url), 
 const html = await readFile(new URL("../../index.html", import.meta.url), "utf8");
 const application = await readFile(new URL("../main.js", import.meta.url), "utf8");
 const cinematicRenderer = await readFile(new URL("traffic-layer.js", import.meta.url), "utf8");
+const facadeRenderer = await readFile(new URL("facade-detail.js", import.meta.url), "utf8");
 const packageManifest = await readFile(new URL("../../package.json", import.meta.url), "utf8");
 
 test("production assets target the canonical Nginx subpath", () => {
@@ -27,6 +28,9 @@ test("cinematic traffic uses a pinned instanced renderer", () => {
   assert.match(cinematicRenderer, /InstancedMesh/);
   assert.match(cinematicRenderer, /IcosahedronGeometry/);
   assert.match(cinematicRenderer, /RoundedBoxGeometry/);
+  assert.match(cinematicRenderer, /createFacadeSystem/);
+  assert.match(facadeRenderer, /CanvasTexture/);
+  assert.match(facadeRenderer, /InstancedMesh/);
 });
 
 test("close-range realism stays bounded and data-driven", () => {
@@ -37,4 +41,6 @@ test("close-range realism stays bounded and data-driven", () => {
   assert.match(cinematicRenderer, /treeCandidates/);
   assert.match(cinematicRenderer, /setReduced/);
   assert.match(application, /button\.querySelector\("small"\)\.textContent/);
+  assert.match(application, /loadFacadeData/);
+  assert.doesNotMatch(application, /const windows = \[/);
 });

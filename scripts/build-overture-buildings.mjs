@@ -44,7 +44,7 @@ function sourceQuery() {
         WHEN subtype IN ('civic', 'medical', 'religious') OR class IN ('church', 'hospital', 'office', 'commercial') THEN 'urban'
         ELSE 'residential'
       END AS facade_type,
-      CAST(hash(id) % 5 AS INTEGER) AS material_variant,
+      CAST(hash(id) % 8 AS INTEGER) AS material_variant,
       geometry
     FROM read_parquet(${sqlString(DATASET)}, filename=true, hive_partitioning=1)
     WHERE
@@ -72,11 +72,21 @@ function fallbackHeight(properties) {
   return 4.2;
 }
 
+function hashString(value) {
+  let hash = 2166136261;
+  for (const character of String(value)) {
+    hash ^= character.charCodeAt(0);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
 async function normalizeSequence(filename) {
   const lines = (await readFile(filename, "utf8")).trim().split(/\r?\n/);
   const normalized = lines.map((line) => {
     const feature = JSON.parse(line);
     const properties = feature.properties;
+    properties.material_variant = hashString(properties.id || feature.id) % 8;
     const sourceHeight = properties.height_source === "inferred" ? null : properties.raw_height ?? properties.height;
     if (Number.isFinite(sourceHeight)) properties.raw_height = sourceHeight;
     if (sourceHeight === null) {

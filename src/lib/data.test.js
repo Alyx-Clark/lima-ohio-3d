@@ -18,6 +18,9 @@ const TRAFFIC_METADATA_PATH = new URL("../../public/data/lima-traffic-metadata.j
 const ROOFTOP_PATH = new URL("../../public/data/lima-rooftops.json", import.meta.url);
 const COMPRESSED_ROOFTOP_PATH = new URL("../../public/data/lima-rooftops.json.gz", import.meta.url);
 const ROOFTOP_METADATA_PATH = new URL("../../public/data/lima-rooftops-metadata.json", import.meta.url);
+const FACADE_PATH = new URL("../../public/data/lima-facades.json", import.meta.url);
+const COMPRESSED_FACADE_PATH = new URL("../../public/data/lima-facades.json.gz", import.meta.url);
+const FACADE_METADATA_PATH = new URL("../../public/data/lima-facades-metadata.json", import.meta.url);
 
 const [detail, boundary, metadata] = await Promise.all(
   [DATA_PATH, BOUNDARY_PATH, METADATA_PATH].map(async (url) => JSON.parse(await readFile(url, "utf8"))),
@@ -38,6 +41,11 @@ const [compressedTraffic, compressedRooftops] = await Promise.all([
   readFile(COMPRESSED_TRAFFIC_PATH),
   readFile(COMPRESSED_ROOFTOP_PATH),
 ]);
+const [facades, facadeMetadata, compressedFacades] = await Promise.all([
+  FACADE_PATH,
+  FACADE_METADATA_PATH,
+  COMPRESSED_FACADE_PATH,
+].map(async (url, index) => (index === 2 ? readFile(url) : JSON.parse(await readFile(url, "utf8")))));
 
 function categoryCount(category) {
   return detail.features.filter((feature) => feature.properties.category === category).length;
@@ -150,4 +158,16 @@ test("procedural roof details remain inside a compact payload", async () => {
   );
   assert.ok(compressed.size < 260_000, `compressed rooftops are ${compressed.size.toLocaleString()} bytes`);
   assert.deepEqual(JSON.parse(gunzipSync(compressedRooftops)), rooftop);
+});
+
+test("street-facing facade layouts are citywide, individualized, and streamable", async () => {
+  const compressed = await stat(COMPRESSED_FACADE_PATH);
+  assert.equal(facades.walls.length, facadeMetadata.counts.streetFacingWalls);
+  assert.ok(facades.walls.length > 25_000);
+  assert.ok(facades.names.length > 200);
+  assert.ok(facadeMetadata.counts.osmEnrichedBuildings > 200);
+  assert.ok(facades.walls.every((wall) => wall.length === 13 && wall.every(Number.isFinite)));
+  assert.ok(facades.walls.every((wall) => wall[3] >= 3 && wall[4] > wall[5] && wall[6] >= 0 && wall[6] <= 6));
+  assert.ok(compressed.size < 700_000, `compressed facades are ${compressed.size.toLocaleString()} bytes`);
+  assert.deepEqual(JSON.parse(gunzipSync(compressedFacades)), facades);
 });

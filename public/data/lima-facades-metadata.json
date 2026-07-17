@@ -1,0 +1,27 @@
+{
+  "city": "Lima, Ohio",
+  "generatedAt": "2026-07-17T03:29:07.934Z",
+  "sources": [
+    "Overture Maps building footprints, classes, names, and heights",
+    "OpenStreetMap drivable street geometry",
+    "OpenStreetMap named POIs and volunteered building material/color tags"
+  ],
+  "license": "ODbL 1.0; source attributions documented in DATA_LICENSE.md",
+  "counts": {
+    "buildings": 24718,
+    "streetFacingWalls": 25986,
+    "namedBuildings": 256,
+    "uniqueNames": 234,
+    "osmEnrichedBuildings": 246,
+    "profiles": {
+      "clapboard-residential": 7587,
+      "brick-residential": 7476,
+      "stucco-residential": 7623,
+      "main-street-storefront": 682,
+      "civic-masonry": 1194,
+      "industrial-service": 68,
+      "institutional-modern": 1356
+    }
+  },
+  "note": "Wall alignment, opening layouts, trim, awnings, and untagged materials are deterministic visualization proxies. Names and explicit material/color tags are retained where volunteered in source data."
+}

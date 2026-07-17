@@ -510,6 +510,9 @@ input:checked + .switch::after {
 }
 
 .legend-swatch--building { background: #c1b9a9; }
+.legend-swatch--facade {
+  background: linear-gradient(90deg, #a34e3f 0 33%, #d6bd8e 33% 66%, #3f6470 66%);
+}
 .legend-swatch--tree { background: #4f8b59; border-radius: 50%; }
 .legend-swatch--path { background: #d8cbb3; }
 .legend-swatch--label { background: #dfe6e2; }

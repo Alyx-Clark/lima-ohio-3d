@@ -46,6 +46,10 @@ The derived objects are height-normalized, de-duplicated canopy-apex visualizati
 
 `public/data/lima-rooftops.json` and its compressed counterpart are deterministic derivatives of the Overture building footprints and heights described above. Equipment rectangles are validated inside source footprints and classified for visualization, but their exact positions and types are not surveyed roof inventories.
 
+## Street-facing facade detail
+
+`public/data/lima-facades.json` and its compressed counterpart combine Overture building footprints/heights with OpenStreetMap road geometry, named points of interest, and volunteered building material/color tags. Source names and explicit material tags are retained where available under the ODbL terms above. The selected road-facing wall, window and door layout, storefront glazing, trim, awnings, service bays, canopies, lamps, and untagged material choices are deterministic visual proxies. They are not extracted from or intended to reproduce Google Street View imagery, and they should not be treated as a current photographic record of a property.
+
 ## Esri World Imagery
 
 The aerial surface is requested at runtime from Esri World Imagery. No Esri raster tile is stored or redistributed in this repository. Esri and its contributing imagery providers retain their applicable rights and attribution requirements:

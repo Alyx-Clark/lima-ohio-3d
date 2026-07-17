@@ -118,7 +118,7 @@
             </button>
             <button class="preset" type="button" data-preset="street">
               <span class="preset__number">06</span>
-              <span><strong>Street level</strong><small>Low downtown approach</small></span>
+              <span><strong>Street level</strong><small>Named downtown storefronts</small></span>
               <span class="preset__arrow" aria-hidden="true">↗</span>
             </button>
           </div>
@@ -138,6 +138,11 @@
             <label class="switch-row">
               <span><i class="legend-swatch legend-swatch--building"></i>Buildings</span>
               <input type="checkbox" data-layer-toggle="buildings" checked>
+              <i class="switch" aria-hidden="true"></i>
+            </label>
+            <label class="switch-row">
+              <span><i class="legend-swatch legend-swatch--facade"></i>Street façades</span>
+              <input type="checkbox" data-layer-toggle="facades" checked>
               <i class="switch" aria-hidden="true"></i>
             </label>
             <label class="switch-row">
@@ -199,6 +204,7 @@
             <span id="source-summary"><strong>LiDAR</strong> individual canopy loading</span>
             <span><strong>Aerial</strong> photographic ground surface</span>
             <span id="traffic-summary"><strong>Traffic</strong> route network loading</span>
+            <span id="facade-summary"><strong>Façades</strong> street detail loading</span>
           </div>
         </section>
 
